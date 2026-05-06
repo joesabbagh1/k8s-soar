@@ -1,0 +1,12 @@
+dependencies:
+- name: falco
+  repository: https://falcosecurity.github.io/charts
+  version: 4.22.0
+- name: tetragon
+  repository: https://helm.cilium.io/
+  version: 1.7.0
+- name: kyverno
+  repository: https://kyverno.github.io/kyverno/
+  version: 3.8.0
+digest: sha256:083c74d052c7dadc126c42b51fa745f13b44cc151f6aa98e5592e4fe50408630
+generated: "2026-05-06T11:32:34.366994+02:00"

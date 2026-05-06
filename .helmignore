@@ -1,6 +1,4 @@
-# Helm build artifacts
-charts/
-*.tgz
+# Build output
 dist/
 
 # OS
