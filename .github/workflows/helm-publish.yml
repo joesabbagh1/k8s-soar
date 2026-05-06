@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'Chart.yaml'
+      - 'Chart.lock'
       - 'values.yaml'
       - 'templates/**'
       - '.github/workflows/helm-publish.yml'
@@ -26,7 +27,6 @@ permissions:
 env:
   REGISTRY: ghcr.io
   CHART_NAME: k8s-soar
-  CHART_DIR: .       # chart lives at repo root
 
 jobs:
   lint-and-test:
@@ -48,15 +48,14 @@ jobs:
           helm repo add kyverno        https://kyverno.github.io/kyverno/
           helm repo update
 
-      - name: Update chart dependencies
-        run: helm dependency update ./${{ env.CHART_DIR }}
+      - name: Build chart dependencies
+        run: helm dependency build
 
       - name: Lint chart
-        run: helm lint ./${{ env.CHART_DIR }}
+        run: helm lint .
 
       - name: Dry-run template render
-        run: |
-          helm template ${{ env.CHART_NAME }} ./${{ env.CHART_DIR }} --debug > /dev/null
+        run: helm template ${{ env.CHART_NAME }} . --debug > /dev/null
 
   publish:
     name: Package & Push to GHCR
@@ -81,8 +80,8 @@ jobs:
           helm repo add kyverno        https://kyverno.github.io/kyverno/
           helm repo update
 
-      - name: Update chart dependencies
-        run: helm dependency update ./${{ env.CHART_DIR }}
+      - name: Build chart dependencies
+        run: helm dependency build
 
       # Determine the chart version:
       #   - On a version tag (v1.2.3) → use the tag (strips the leading 'v')
@@ -94,7 +93,7 @@ jobs:
             VERSION="${{ github.ref_name }}"
             VERSION="${VERSION#v}"   # strip leading 'v'
           else
-            CHART_VER=$(grep '^version:' ./${{ env.CHART_DIR }}/Chart.yaml | awk '{print $2}')
+            CHART_VER=$(grep '^version:' Chart.yaml | awk '{print $2}')
             SHORT_SHA=$(echo "${{ github.sha }}" | head -c 7)
             VERSION="${CHART_VER}-${SHORT_SHA}"
           fi
@@ -103,7 +102,7 @@ jobs:
 
       - name: Package chart
         run: |
-          helm package ./${{ env.CHART_DIR }} \
+          helm package . \
             --version "${{ steps.version.outputs.version }}" \
             --destination ./dist
 
