@@ -1,0 +1,76 @@
+# ==============================================================================
+# k8s-soar — Values
+# Falco + Tetragon + Kyverno security stack
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Falco — Runtime threat detection (syscall-level via modern eBPF)
+# ------------------------------------------------------------------------------
+falco:
+  # Use modern eBPF driver — no kernel module or DKMS required
+  driver:
+    kind: modern_ebpf
+
+  # Emit structured JSON for SOAR processing
+  jsonOutput: true
+  jsonIncludeOutputProperty: true
+  logLevel: info
+
+  # Falco sidekick — forwards alerts to Slack, webhooks, etc.
+  # Configure in a separate values override file for Phase 2.
+  falcosidekick:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ------------------------------------------------------------------------------
+# Tetragon — Kernel-level eBPF enforcement (Cilium sub-project)
+# ------------------------------------------------------------------------------
+tetragon:
+  tetragon:
+    grpc:
+      address: "localhost:54321"
+    prometheusPort: 2112
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  tetragonOperator:
+    enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+# ------------------------------------------------------------------------------
+# Kyverno — Kubernetes admission policies (policy-as-code)
+# ------------------------------------------------------------------------------
+kyverno:
+  # Single replica — adequate for thesis/lab environment
+  admissionController:
+    replicas: 1
+  backgroundController:
+    resources:
+      limits:
+        memory: 128Mi
+  cleanupController:
+    resources:
+      limits:
+        memory: 128Mi
+  reportsController:
+    resources:
+      limits:
+        memory: 128Mi

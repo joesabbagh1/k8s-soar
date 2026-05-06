@@ -1,0 +1,128 @@
+name: Publish Helm Chart to GHCR
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Chart.yaml'
+      - 'values.yaml'
+      - 'templates/**'
+      - '.github/workflows/helm-publish.yml'
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Chart.yaml'
+      - 'values.yaml'
+      - 'templates/**'
+
+permissions:
+  contents: read
+  packages: write   # required to push to ghcr.io
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: k8s-soar
+  CHART_DIR: .       # chart lives at repo root
+
+jobs:
+  lint-and-test:
+    name: Lint & Dry-Run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.17.x"
+
+      - name: Add chart repositories
+        run: |
+          helm repo add falcosecurity https://falcosecurity.github.io/charts
+          helm repo add cilium         https://helm.cilium.io/
+          helm repo add kyverno        https://kyverno.github.io/kyverno/
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update ./${{ env.CHART_DIR }}
+
+      - name: Lint chart
+        run: helm lint ./${{ env.CHART_DIR }}
+
+      - name: Dry-run template render
+        run: |
+          helm template ${{ env.CHART_NAME }} ./${{ env.CHART_DIR }} --debug > /dev/null
+
+  publish:
+    name: Package & Push to GHCR
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    # Only publish on pushes to main or version tags — not on PRs
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.17.x"
+
+      - name: Add chart repositories
+        run: |
+          helm repo add falcosecurity https://falcosecurity.github.io/charts
+          helm repo add cilium         https://helm.cilium.io/
+          helm repo add kyverno        https://kyverno.github.io/kyverno/
+          helm repo update
+
+      - name: Update chart dependencies
+        run: helm dependency update ./${{ env.CHART_DIR }}
+
+      # Determine the chart version:
+      #   - On a version tag (v1.2.3) → use the tag (strips the leading 'v')
+      #   - On a branch push       → use Chart.yaml version + git short SHA as pre-release
+      - name: Resolve chart version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"   # strip leading 'v'
+          else
+            CHART_VER=$(grep '^version:' ./${{ env.CHART_DIR }}/Chart.yaml | awk '{print $2}')
+            SHORT_SHA=$(echo "${{ github.sha }}" | head -c 7)
+            VERSION="${CHART_VER}-${SHORT_SHA}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved chart version: ${VERSION}"
+
+      - name: Package chart
+        run: |
+          helm package ./${{ env.CHART_DIR }} \
+            --version "${{ steps.version.outputs.version }}" \
+            --destination ./dist
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Push chart to GHCR
+        run: |
+          helm push ./dist/${{ env.CHART_NAME }}-${{ steps.version.outputs.version }}.tgz \
+            oci://${{ env.REGISTRY }}/${{ github.repository_owner }}
+
+      - name: Print install command
+        run: |
+          echo "Chart published!"
+          echo ""
+          echo "Install with:"
+          echo "  helm install k8s-soar oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.CHART_NAME }} \\"
+          echo "    --version ${{ steps.version.outputs.version }} \\"
+          echo "    --namespace k8s-soar --create-namespace"

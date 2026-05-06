@@ -1,0 +1,12 @@
+# Helm build artifacts
+charts/
+*.tgz
+dist/
+
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp

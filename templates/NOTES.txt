@@ -1,0 +1,41 @@
+k8s-soar has been deployed!
+
+Components installed:
+{{- if .Values.falco.enabled }}
+  ✓ Falco (runtime threat detection)
+    Namespace : falco
+    Driver    : {{ .Values.falco.driver.kind }}
+    Output    : JSON ({{ .Values.falco.jsonOutput }})
+    Sidekick  : {{ .Values.falco.falcosidekick.enabled }}
+{{- end }}
+{{- if .Values.tetragon.enabled }}
+  ✓ Tetragon (eBPF kernel enforcement)
+    Namespace : tetragon
+    gRPC      : {{ .Values.tetragon.tetragon.grpc.address }}
+    Metrics   : :{{ .Values.tetragon.tetragon.prometheusPort }}/metrics
+{{- end }}
+{{- if .Values.kyverno.enabled }}
+  ✓ Kyverno (admission policy engine)
+    Namespace : kyverno
+    Mode      : {{ .Values.kyverno.validationFailureAction }}
+{{- end }}
+
+─────────────────────────────────────────────
+Verify the stack is running:
+
+  kubectl get pods -n falco
+  kubectl get pods -n tetragon
+  kubectl get pods -n kyverno
+
+Stream Falco alerts:
+  kubectl logs -n falco -l app.kubernetes.io/name=falco -f
+
+Stream Tetragon events:
+  kubectl exec -n tetragon ds/tetragon -- tetra getevents -o compact
+
+List Kyverno policies:
+  kubectl get cpol,pol -A
+
+Installed from OCI:
+  helm pull oci://ghcr.io/joesabbagh1/k8s-soar --version {{ .Chart.Version }}
+─────────────────────────────────────────────
