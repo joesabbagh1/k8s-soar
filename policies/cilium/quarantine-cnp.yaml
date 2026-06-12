@@ -1,0 +1,19 @@
+# Quarantine — drops all traffic for pods labeled security.quarantine=true
+# Requires Cilium CNI. For non-Cilium clusters use network/quarantine-networkpolicy.yaml
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: k8s-soar-quarantine
+  namespace: security-lab
+  labels:
+    app.kubernetes.io/part-of: k8s-soar
+spec:
+  endpointSelector:
+    matchLabels:
+      security.quarantine: "true"
+  ingressDeny:
+    - fromEntities:
+        - all
+  egressDeny:
+    - toEntities:
+        - all

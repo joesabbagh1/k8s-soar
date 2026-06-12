@@ -1,0 +1,22 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-restrict-sa-automount
+  annotations:
+    policies.kyverno.io/title: Restrict Service Account Token Automount
+    k8s-soar.io/scenario: "03-secret-access"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: automount-service-account-token
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "automountServiceAccountToken must be false unless explicitly required."
+        pattern:
+          spec:
+            automountServiceAccountToken: false

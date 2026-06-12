@@ -1,0 +1,57 @@
+# Custom Falco rules for k8s-soar threat scenarios.
+# Apply after install:
+#   kubectl create configmap falco-k8s-soar-rules -n falco --from-file=policies/falco/k8s-soar_rules.yaml --dry-run=client -o yaml | kubectl apply -f -
+# Or mount via Helm falco.customRules in a client values overlay.
+
+- rule: K8sSoar Reverse Shell Outbound
+  desc: Detect outbound connection patterns consistent with reverse shells
+  condition: >
+    spawned_process and container and
+    proc.name in (bash, sh, dash, zsh) and
+    (fd.typechar = 4 or fd.typechar = 6) and
+    fd.ip != "0.0.0.0" and fd.l4proto = tcp and
+    inbound_outbound = outbound and
+    k8s.ns.name = "security-lab"
+  output: >
+    Reverse shell suspected (k8s-soar scenario 04)
+    ns=%k8s.ns.name pod=%k8s.pod.name proc=%proc.name connection=%fd.name
+  priority: CRITICAL
+  tags: [k8s-soar, scenario-04, mitre_execution]
+
+- rule: K8sSoar Sensitive Credential Access
+  desc: Read of service account token or secrets mount inside security-lab
+  condition: >
+    open_read and container and
+    k8s.ns.name = "security-lab" and
+    (fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount or
+     fd.name contains /etc/shadow)
+  output: >
+    Sensitive credential file read (k8s-soar scenario 03)
+    ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
+  priority: WARNING
+  tags: [k8s-soar, scenario-03, mitre_credential_access]
+
+- rule: K8sSoar Crypto Miner Process
+  desc: Unexpected miner-like process names in security-lab
+  condition: >
+    spawned_process and container and
+    k8s.ns.name = "security-lab" and
+    proc.name in (xmrig, minerd, cpuminer, ethminer)
+  output: >
+    Crypto miner process detected (k8s-soar scenario 05)
+    ns=%k8s.ns.name pod=%k8s.pod.name proc=%proc.name
+  priority: CRITICAL
+  tags: [k8s-soar, scenario-05, mitre_impact]
+
+- rule: K8sSoar Shell In Victim Container
+  desc: Interactive shell spawned in security-lab victim workload
+  condition: >
+    spawned_process and container and
+    k8s.ns.name = "security-lab" and
+    proc.name in (bash, sh) and
+    proc.pname exists and proc.pname in (nginx, pause)
+  output: >
+    Shell spawned in victim container (k8s-soar scenario 01)
+    ns=%k8s.ns.name pod=%k8s.pod.name shell=%proc.name parent=%proc.pname
+  priority: WARNING
+  tags: [k8s-soar, scenario-01, mitre_execution]

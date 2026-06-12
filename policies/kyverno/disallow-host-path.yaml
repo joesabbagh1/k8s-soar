@@ -1,0 +1,23 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-disallow-host-path
+  annotations:
+    policies.kyverno.io/title: Disallow hostPath Volumes
+    k8s-soar.io/scenario: "02-privileged-pod"
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: disallow-host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "hostPath volumes are not allowed."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"

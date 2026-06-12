@@ -1,0 +1,23 @@
+apiVersion: cilium.io/v2
+kind: TracingPolicy
+metadata:
+  name: k8s-soar-block-sensitive-writes
+  annotations:
+    k8s-soar.io/scenario: "08-sensitive-host-write"
+spec:
+  kprobes:
+    - call: "security_file_open"
+      syscall: false
+      args:
+        - index: 0
+          type: "file"
+      selectors:
+        - matchActions:
+            - action: Sigkill
+          matchNamespaces:
+            - namespace: security-lab
+          matchBinaries:
+            - operator: NotIn
+              values:
+                - /pause
+                - /usr/sbin/nginx
