@@ -8,18 +8,14 @@ Procedures for validating k8s-soar after bare-metal bootstrap.
 |------|---------|
 | Bootstrap cluster + stack | `./ansible/setup.sh` |
 | Verify components | `./scripts/verify-stack.sh` |
-| Apply policies | `kubectl apply -k policies/` |
-| Deploy lab | `kubectl apply -k lab/` |
-| Run scenarios | `./scenarios/run-all.sh` |
+| Run scenarios (manual) | `./scenarios/01-shell-in-container/run.sh` etc. |
 
 ## Checklist
 
 1. `./scripts/preflight.sh` — optional, before manual Helm install on existing kubeadm cluster
 2. `./ansible/setup.sh` — full bare-metal path
 3. `./scripts/verify-stack.sh` — post-install
-4. `kubectl apply -k policies/ && kubectl apply -k lab/`
-5. `./scripts/load-falco-rules.sh`
-6. `./scenarios/run-all.sh`
+4. When ready, run scenarios **one at a time** (see `scenarios/threat-matrix.md`)
 7. Record baseline noise in `evidence/baseline/` using the template
 
 ## Baseline noise collection

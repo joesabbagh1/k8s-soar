@@ -1,7 +1,5 @@
 # Custom Falco rules for k8s-soar threat scenarios.
-# Apply after install:
-#   kubectl create configmap falco-k8s-soar-rules -n falco --from-file=policies/falco/k8s-soar_rules.yaml --dry-run=client -o yaml | kubectl apply -f -
-# Or mount via Helm falco.customRules in a client values overlay.
+# Loaded automatically via Helm (scripts/render-falco-rules-values.sh) during install.
 
 - rule: K8sSoar Reverse Shell Outbound
   desc: Detect outbound connection patterns consistent with reverse shells

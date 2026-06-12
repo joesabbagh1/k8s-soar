@@ -5,6 +5,11 @@ charts/
 # Local build output
 dist/
 
+# Generated Helm value overlays
+.generated/
+helm-values.yaml
+falco-rules-values.yaml
+
 # Thesis evidence exports (may contain cluster metadata)
 evidence/*
 !evidence/.gitkeep

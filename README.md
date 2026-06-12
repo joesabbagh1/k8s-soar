@@ -13,27 +13,19 @@
 
 1. **Ansible** — OS prep, kubeadm cluster, Helm install
 2. **Cilium** — eBPF CNI, network policies, Hubble
-3. **Falco** — runtime threat detection (modern eBPF)
-4. **Tetragon** — kernel-level enforcement
+3. **Falco** — runtime threat detection (modern eBPF) + custom rules
+4. **Tetragon** — kernel-level enforcement policies
 5. **Kyverno** — admission policies-as-code
-6. **SOAR responder** (optional) — Detect → Isolate via falcosidekick webhook
-
-| Component | Role |
-|-----------|------|
-| **Ansible** | Bare-metal kubeadm bootstrap |
-| **Cilium** | CNI + network security + Hubble |
-| **Falco** | Syscall-level detection |
-| **Tetragon** | eBPF TracingPolicies |
-| **Kyverno** | Admission policy engine |
+6. **security-lab** — isolated namespace for attack scenarios
+7. **SOAR responder** (optional) — Detect → Isolate via falcosidekick webhook
 
 ## Prerequisites
 
 - Bare-metal or VM servers: Ubuntu 22.04+, kernel ≥ 5.10
 - Ansible ≥ 2.14 on operator machine
 - SSH + sudo access to all nodes
-- Operator machine: Helm ≥ 3.14 (installed by Ansible if missing)
 
-## Install (bare metal from scratch)
+## One-command install (bare metal from scratch)
 
 ```bash
 cp ansible/inventory.example.ini ansible/inventory.ini
@@ -43,87 +35,71 @@ cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
 ./ansible/setup.sh
 ```
 
-The playbook will:
+This automatically provisions the cluster and security stack. **Attack scenarios are not run** — execute those manually when you are ready (see below).
 
-1. Prepare nodes and install kubeadm (no CNI yet — nodes stay NotReady)
-2. Initialize the cluster and join workers
-3. Install k8s-soar via Helm (Cilium becomes the pod network)
-4. Run `./scripts/verify-stack.sh`
+## Run attack scenarios (manual — one at a time)
 
-Then apply policies and the attack lab:
+After install, run scenarios individually for your demo or thesis evidence:
 
 ```bash
-export KUBECONFIG=~/.kube/config-<cluster_name>   # from setup.sh output
-kubectl apply -k policies/
-kubectl apply -k lab/
-./scripts/load-falco-rules.sh
-./scenarios/run-all.sh
+export KUBECONFIG=~/.kube/config-<cluster_name>
+
+# Pick a scenario — do not run all at once unless you intend to
+./scenarios/01-shell-in-container/run.sh
+./scenarios/02-privileged-pod/run.sh
+# ... see scenarios/threat-matrix.md
 ```
 
-## Manual Helm install (after kubeadm only)
+Each scenario folder has a `README.md` with expected alerts and evidence to capture.
 
-If you already ran kubeadm separately and need only the security stack:
+## Enable SOAR (optional)
 
-```bash
-helm repo add falcosecurity https://falcosecurity.github.io/charts
-helm repo add cilium         https://helm.cilium.io/
-helm repo add kyverno        https://kyverno.github.io/kyverno/
-helm repo update
-helm dependency build .
-
-helm install k8s-soar . \
-  --namespace k8s-soar --create-namespace \
-  --wait --timeout 15m
-```
-
-## Enable SOAR (Detect → Isolate)
-
-Set in `values.yaml` or pass `--set`:
+Set in `ansible/group_vars/all.yml`:
 
 ```yaml
-soar:
-  responder:
-    enabled: true
-falco:
-  falcosidekick:
-    enabled: true
-    config:
-      webhook:
-        address: "http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook"
-        minimumpriority: "warning"
+enable_soar: true
 ```
 
-Then `helm upgrade k8s-soar . -n k8s-soar --wait`. See [docs/thesis/SOAR-LIMITATIONS.md](./docs/thesis/SOAR-LIMITATIONS.md).
+Re-run `./ansible/setup.sh` (or `./scripts/helm-install.sh` with `K8S_SOAR_ENABLE_SOAR=1`).
 
-## Repository layout
+This enables the in-cluster responder and falcosidekick webhook automatically.
 
-```text
-ansible/          Bare-metal kubeadm bootstrap + Helm install
-values.yaml       Full stack defaults (Cilium + Falco + Tetragon + Kyverno)
-policies/         Kyverno, Falco, Tetragon, quarantine YAML
-lab/              security-lab namespace + victim workload
-scenarios/        Threat matrix + attack simulation runbooks
-scripts/          preflight, verify-stack, load-falco-rules
-docs/             Thesis architecture, methodology, validation
+## Manual Helm install (kubeadm already done)
+
+```bash
+./scripts/helm-install.sh
 ```
+
+## What is automated vs manual
+
+| Step | Automated by |
+|------|----------------|
+| OS + kubeadm cluster | Ansible |
+| Cilium / Falco / Tetragon / Kyverno | Helm |
+| Falco custom rules | `render-helm-values.sh` overlay |
+| Kyverno + Tetragon + quarantine policies | Helm (`templates/extras-manifests.yaml`) |
+| security-lab namespace + victim app | Helm (`templates/extras-manifests.yaml`) |
+| SOAR responder + webhook | `enable_soar: true` or `K8S_SOAR_ENABLE_SOAR=1` |
+| Attack scenario execution | **Manual only** — `./scenarios/NN-name/run.sh` when you choose |
+| Kyverno Enforce mode | Optional — policies ship in Audit mode |
+| Inventory / server IPs | One-time manual edit |
+
+To update policies without a full reinstall: `kubectl apply -k policies/`
 
 ## Verify
 
 ```bash
 ./scripts/verify-stack.sh
-kubectl get pods -n kube-system -l k8s-app=cilium
-kubectl get pods -n falco
-kubectl get pods -n tetragon
-kubectl get pods -n kyverno
+kubectl get cpol -A
+kubectl get ns security-lab
 ```
 
 ## Documentation
 
 - [Ansible bootstrap](./ansible/README.md)
 - [Architecture](./docs/thesis/ARCHITECTURE.md)
-- [Methodology](./docs/thesis/METHODOLOGY.md)
-- [Reproducibility](./docs/thesis/REPRODUCIBILITY.md)
 - [Threat matrix](./scenarios/threat-matrix.md)
+- [SOAR limitations](./docs/thesis/SOAR-LIMITATIONS.md)
 
 ## License
 

@@ -58,7 +58,12 @@ jobs:
         run: helm lint .
 
       - name: Template chart
-        run: helm template k8s-soar . --debug > /dev/null
+        run: |
+          chmod +x scripts/*.sh
+          ./scripts/render-helm-values.sh .generated/helm-values.yaml
+          helm template k8s-soar . \
+            -f .generated/helm-values.yaml \
+            --debug > /dev/null
 
       - name: Validate policies kustomize
         run: kubectl kustomize policies/ > /dev/null

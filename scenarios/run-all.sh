@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Run all k8s-soar scenarios sequentially (requires lab + policies applied).
+# Optional: run ALL scenarios in sequence (for batch testing only).
+# For demos and thesis evidence, run scenarios individually instead:
+#   ./scenarios/01-shell-in-container/run.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for dir in "$ROOT"/[0-9][0-9]-*/; do

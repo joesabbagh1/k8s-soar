@@ -12,10 +12,9 @@ cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
 
 ./ansible/setup.sh
 ./scripts/verify-stack.sh
-kubectl apply -k policies/
-kubectl apply -k lab/
-./scripts/load-falco-rules.sh
-./scenarios/run-all.sh
+
+# Attack simulations — manual, run individually when ready:
+# ./scenarios/01-shell-in-container/run.sh
 ```
 
 ## Helm-only (kubeadm already done, no CNI)
@@ -28,15 +27,9 @@ helm repo add cilium https://helm.cilium.io/
 helm repo add kyverno https://kyverno.github.io/kyverno/
 helm repo update
 
-helm dependency build .
+./scripts/helm-install.sh
 
-helm install k8s-soar . \
-  --namespace k8s-soar --create-namespace \
-  --wait --timeout 15m
-
-./scripts/verify-stack.sh
-kubectl apply -k policies/
-kubectl apply -k lab/
+# Attack simulations — manual, run individually when ready
 ```
 
 ## Evidence collection

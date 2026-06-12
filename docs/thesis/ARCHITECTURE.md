@@ -24,7 +24,7 @@ After `kubeadm init`, nodes are NotReady until Helm installs Cilium as the pod n
 ## Design decisions
 
 - **Cilium as single CNI** — installed immediately after kubeadm; no Flannel/Calico.
-- **Policies decoupled from Helm** — `kubectl apply -k policies/` for independent versioning.
+- **Policies and lab bundled in Helm** — sourced from `policies/` and `lab/` via chart templates.
 - **security-lab namespace** — all attack simulations isolated from other workloads.
 - **Single install path** — bare-metal bootstrap only; no brownfield/k3s/kind variants.
 

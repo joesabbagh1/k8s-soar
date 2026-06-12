@@ -21,7 +21,7 @@ Maps core thesis scenarios to MITRE ATT&CK (Containers), tooling, and evidence.
 
 ## Scenario runbooks
 
-Each scenario directory contains `README.md` (steps + expected evidence) and `run.sh` (automated trigger).
+Each scenario directory contains `README.md` (steps + expected evidence) and `run.sh` (manual trigger — run one scenario at a time for demos).
 
 ## References
 

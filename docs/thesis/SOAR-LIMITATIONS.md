@@ -28,12 +28,16 @@
 
 ## Enabling SOAR
 
+In `ansible/group_vars/all.yml`:
+
+```yaml
+enable_soar: true
+```
+
+Then re-run `./ansible/setup.sh`, or:
+
 ```bash
-helm upgrade k8s-soar . -n k8s-soar --wait \
-  --set soar.responder.enabled=true \
-  --set falco.falcosidekick.enabled=true \
-  --set falco.falcosidekick.config.webhook.address=http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook
-kubectl apply -k policies/
+K8S_SOAR_ENABLE_SOAR=1 ./scripts/helm-install.sh
 ```
 
 Test isolate manually:

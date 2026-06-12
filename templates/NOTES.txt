@@ -47,9 +47,13 @@ Verify the stack is running:
   kubectl get pods -n kyverno
 {{- end }}
 
-Apply policies and lab (after install):
-  kubectl apply -k policies/
-  kubectl apply -k lab/
+Apply policies and lab (included automatically by Helm):
+  policies.enabled: {{ .Values.policies.enabled }}
+  lab.enabled:          {{ .Values.lab.enabled }}
+
+Run attack scenarios manually when ready (not part of install):
+  ./scenarios/01-shell-in-container/run.sh
+  See scenarios/threat-matrix.md for the full list
 
 Installed from OCI:
   helm pull oci://ghcr.io/joesabbagh1/k8s-soar --version {{ .Chart.Version }}

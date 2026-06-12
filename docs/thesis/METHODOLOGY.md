@@ -15,8 +15,8 @@
 
 ## Simulation procedure
 
-1. Install stack and apply policies/lab
-2. Load Falco custom rules
+1. Install stack via `./ansible/setup.sh` (policies, lab, and Falco rules included)
+2. Run scenarios
 3. Run `./scenarios/NN-name/run.sh`
 4. Capture logs within 2 minutes:
    - `kubectl logs -n falco ...`
@@ -29,7 +29,7 @@
 1. Kyverno: Audit → validate scenarios → Enforce
 2. Falco: load k8s-soar rules scoped to security-lab
 3. Tetragon: apply TracingPolicies incrementally
-4. SOAR: set `soar.responder.enabled=true` and `falco.falcosidekick.enabled=true` in values.yaml, then `helm upgrade`
+4. SOAR: set `enable_soar: true` in `ansible/group_vars/all.yml` and re-run setup, or `K8S_SOAR_ENABLE_SOAR=1 ./scripts/helm-install.sh`
 
 ## Reproducibility
 

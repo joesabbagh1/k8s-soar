@@ -19,6 +19,7 @@ nuclear_wipe: true
 
 # Install k8s-soar Helm stack after kubeadm (Cilium as CNI)
 install_k8s_soar: true
+enable_soar: false
 k8s_soar_chart_path: "{{ playbook_dir }}/.."
 k8s_soar_release: k8s-soar
 k8s_soar_namespace: k8s-soar

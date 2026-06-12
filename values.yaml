@@ -4,9 +4,17 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# Bundled manifests — lab + Kyverno/Tetragon/quarantine policies (from policies/ and lab/)
+# ------------------------------------------------------------------------------
+policies:
+  enabled: true
+
+lab:
+  enabled: true
+
+# ------------------------------------------------------------------------------
 # SOAR — Detect → Isolate response automation
-# Enable SOAR Detect → Isolate by setting soar.responder.enabled=true and
-# falco.falcosidekick.enabled=true (see README).
+# Set soar.responder.enabled=true to enable responder + falcosidekick webhook.
 # ------------------------------------------------------------------------------
 soar:
   responder:
@@ -52,6 +60,10 @@ falco:
 
   falcosidekick:
     enabled: false
+    config:
+      webhook:
+        address: "http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook"
+        minimumpriority: "warning"
 
   resources:
     requests:

@@ -257,12 +257,21 @@
       args:
         chdir: "{{ k8s_soar_chart_path }}"
 
+    - name: Generate Helm values overlay
+      ansible.builtin.command: >-
+        {{ k8s_soar_chart_path }}/scripts/render-helm-values.sh
+        {{ k8s_soar_chart_path }}/.generated/helm-values.yaml
+      environment:
+        K8S_SOAR_ENABLE_SOAR: "{{ enable_soar | bool | ternary('1', '0') }}"
+      changed_when: true
+
     - name: Install or upgrade k8s-soar release
       ansible.builtin.command: >-
         helm upgrade --install {{ k8s_soar_release }} .
         --kubeconfig {{ kubeconfig_dest }}
         --namespace {{ k8s_soar_namespace }}
         --create-namespace
+        -f {{ k8s_soar_chart_path }}/.generated/helm-values.yaml
         --wait
         --timeout 15m
       args:
