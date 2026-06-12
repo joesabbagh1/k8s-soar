@@ -1,6 +1,11 @@
 k8s-soar has been deployed!
 
 Components installed:
+{{- if .Values.cilium.enabled }}
+  ✓ Cilium (eBPF CNI and network security)
+    Namespace : kube-system
+    Hubble    : {{ .Values.cilium.hubble.enabled }}
+{{- end }}
 {{- if .Values.falco.enabled }}
   ✓ Falco (runtime threat detection)
     Namespace : falco
@@ -17,24 +22,34 @@ Components installed:
 {{- if .Values.kyverno.enabled }}
   ✓ Kyverno (admission policy engine)
     Namespace : kyverno
-    Mode      : {{ .Values.kyverno.validationFailureAction }}
+{{- end }}
+{{- if .Values.soar.responder.enabled }}
+  ✓ SOAR Responder (Detect → Isolate webhook)
+    Namespace : {{ .Release.Namespace }}
+    Webhook   : http://k8s-soar-responder.{{ .Release.Namespace }}.svc:{{ .Values.soar.responder.port }}/webhook
 {{- end }}
 
 ─────────────────────────────────────────────
 Verify the stack is running:
 
+  ./scripts/verify-stack.sh
+
+{{- if .Values.cilium.enabled }}
+  kubectl get pods -n kube-system -l k8s-app=cilium
+{{- end }}
+{{- if .Values.falco.enabled }}
   kubectl get pods -n falco
+{{- end }}
+{{- if .Values.tetragon.enabled }}
   kubectl get pods -n tetragon
+{{- end }}
+{{- if .Values.kyverno.enabled }}
   kubectl get pods -n kyverno
+{{- end }}
 
-Stream Falco alerts:
-  kubectl logs -n falco -l app.kubernetes.io/name=falco -f
-
-Stream Tetragon events:
-  kubectl exec -n tetragon ds/tetragon -- tetra getevents -o compact
-
-List Kyverno policies:
-  kubectl get cpol,pol -A
+Apply policies and lab (after install):
+  kubectl apply -k policies/
+  kubectl apply -k lab/
 
 Installed from OCI:
   helm pull oci://ghcr.io/joesabbagh1/k8s-soar --version {{ .Chart.Version }}

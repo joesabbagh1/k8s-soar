@@ -2,15 +2,16 @@ apiVersion: v2
 name: k8s-soar
 description: >
   Kubernetes Security Orchestration, Automation & Response (SOAR) stack.
-  Deploys Falco (syscall threat detection), Tetragon (eBPF kernel enforcement),
-  and Kyverno (admission policy engine) to bootstrap a real-time threat detection
-  and response environment.
+  Deploys Cilium (eBPF CNI and network security), Falco (syscall threat detection),
+  Tetragon (eBPF kernel enforcement), and Kyverno (admission policy engine) to
+  bootstrap a real-time threat detection and response environment.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
 
 keywords:
   - security
+  - cilium
   - falco
   - tetragon
   - kyverno
@@ -23,14 +24,22 @@ maintainers:
     url: https://github.com/joesabbagh1
 
 dependencies:
+  - name: cilium
+    version: "1.x.x"
+    repository: "https://helm.cilium.io/"
+    condition: cilium.enabled
+
   - name: falco
     version: "4.x.x"
     repository: "https://falcosecurity.github.io/charts"
+    condition: falco.enabled
 
   - name: tetragon
     version: "1.x.x"
     repository: "https://helm.cilium.io/"
+    condition: tetragon.enabled
 
   - name: kyverno
     version: "3.x.x"
     repository: "https://kyverno.github.io/kyverno/"
+    condition: kyverno.enabled

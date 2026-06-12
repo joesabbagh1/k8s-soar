@@ -1,23 +1,55 @@
 # ==============================================================================
 # k8s-soar — Values
-# Falco + Tetragon + Kyverno security stack
+# Cilium + Falco + Tetragon + Kyverno security stack
 # ==============================================================================
+
+# ------------------------------------------------------------------------------
+# SOAR — Detect → Isolate response automation
+# Enable SOAR Detect → Isolate by setting soar.responder.enabled=true and
+# falco.falcosidekick.enabled=true (see README).
+# ------------------------------------------------------------------------------
+soar:
+  responder:
+    enabled: false
+    image: python:3.12-alpine
+    port: 8080
+  quarantine:
+    labelKey: security.quarantine
+    labelValue: "true"
+
+# ------------------------------------------------------------------------------
+# Cilium — eBPF CNI, network policy, and observability (Hubble)
+# Installed as the pod network after kubeadm init (bare-metal bootstrap).
+# ------------------------------------------------------------------------------
+cilium:
+  enabled: true
+
+  kubeProxyReplacement: true
+
+  operator:
+    replicas: 1
+
+  hubble:
+    enabled: true
+    relay:
+      enabled: true
+    ui:
+      enabled: true
 
 # ------------------------------------------------------------------------------
 # Falco — Runtime threat detection (syscall-level via modern eBPF)
 # ------------------------------------------------------------------------------
 falco:
-  # Use modern eBPF driver — no kernel module or DKMS required
+  enabled: true
+
   driver:
     kind: modern_ebpf
 
-  # Emit structured JSON for SOAR processing
   jsonOutput: true
   jsonIncludeOutputProperty: true
+  jsonIncludeTagsProperty: true
   logLevel: info
 
-  # Falco sidekick — forwards alerts to Slack, webhooks, etc.
-  # Configure in a separate values override file for Phase 2.
   falcosidekick:
     enabled: false
 
@@ -33,6 +65,8 @@ falco:
 # Tetragon — Kernel-level eBPF enforcement (Cilium sub-project)
 # ------------------------------------------------------------------------------
 tetragon:
+  enabled: true
+
   tetragon:
     grpc:
       address: "localhost:54321"
@@ -59,7 +93,8 @@ tetragon:
 # Kyverno — Kubernetes admission policies (policy-as-code)
 # ------------------------------------------------------------------------------
 kyverno:
-  # Single replica — adequate for thesis/lab environment
+  enabled: true
+
   admissionController:
     replicas: 1
   backgroundController:

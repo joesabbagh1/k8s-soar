@@ -5,6 +5,10 @@ charts/
 # Local build output
 dist/
 
+# Thesis evidence exports (may contain cluster metadata)
+evidence/*
+!evidence/.gitkeep
+
 # OS
 .DS_Store
 
