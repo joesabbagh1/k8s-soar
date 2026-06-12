@@ -1,7 +1,7 @@
 # k8s-soar
 
 > **Kubernetes Security Orchestration, Automation & Response**
-> Thesis project — Falco + Tetragon + Kyverno environment bootstrap
+> Bare-metal bootstrap — kubeadm + Cilium + Falco + Tetragon + Kyverno
 
 [![Publish Helm Chart](https://github.com/joesabbagh1/k8s-soar/actions/workflows/helm-publish.yml/badge.svg)](https://github.com/joesabbagh1/k8s-soar/actions/workflows/helm-publish.yml)
 
@@ -9,103 +9,121 @@
 
 ## Overview
 
-`k8s-soar` is a Helm umbrella chart that bootstraps a complete threat detection and policy enforcement stack on any Kubernetes cluster:
+`k8s-soar` provisions a complete security stack on **bare-metal Linux servers** from scratch:
 
-| Component | Role | Mechanism |
-|-----------|------|-----------|
-| **Falco** | Runtime threat detection | Syscall interception via modern eBPF |
-| **Tetragon** | Kernel-level enforcement | eBPF TracingPolicies (Cilium sub-project) |
-| **Kyverno** | Admission policy engine | Kubernetes admission webhook |
+1. **Ansible** — OS prep, kubeadm cluster, Helm install
+2. **Cilium** — eBPF CNI, network policies, Hubble
+3. **Falco** — runtime threat detection (modern eBPF)
+4. **Tetragon** — kernel-level enforcement
+5. **Kyverno** — admission policies-as-code
+6. **SOAR responder** (optional) — Detect → Isolate via falcosidekick webhook
+
+| Component | Role |
+|-----------|------|
+| **Ansible** | Bare-metal kubeadm bootstrap |
+| **Cilium** | CNI + network security + Hubble |
+| **Falco** | Syscall-level detection |
+| **Tetragon** | eBPF TracingPolicies |
+| **Kyverno** | Admission policy engine |
 
 ## Prerequisites
 
-- Kubernetes ≥ 1.28
-- Helm ≥ 3.14
-- Nodes with eBPF support (kernel ≥ 5.10 recommended)
-- If using your homelab: Cilium is already installed — set `cilium.enabled=false` (default)
+- Bare-metal or VM servers: Ubuntu 22.04+, kernel ≥ 5.10
+- Ansible ≥ 2.14 on operator machine
+- SSH + sudo access to all nodes
+- Operator machine: Helm ≥ 3.14 (installed by Ansible if missing)
 
-## Install from GHCR
+## Install (bare metal from scratch)
 
 ```bash
-helm install k8s-soar oci://ghcr.io/joesabbagh1/k8s-soar \
-  --version 0.1.0 \
-  --namespace k8s-soar \
-  --create-namespace
+cp ansible/inventory.example.ini ansible/inventory.ini
+cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
+# Edit: master IP, node hosts, cluster_name, SSH key
+
+./ansible/setup.sh
 ```
 
-## Install from source
+The playbook will:
+
+1. Prepare nodes and install kubeadm (no CNI yet — nodes stay NotReady)
+2. Initialize the cluster and join workers
+3. Install k8s-soar via Helm (Cilium becomes the pod network)
+4. Run `./scripts/verify-stack.sh`
+
+Then apply policies and the attack lab:
 
 ```bash
-# 1. Add dependency repos
+export KUBECONFIG=~/.kube/config-<cluster_name>   # from setup.sh output
+kubectl apply -k policies/
+kubectl apply -k lab/
+./scripts/load-falco-rules.sh
+./scenarios/run-all.sh
+```
+
+## Manual Helm install (after kubeadm only)
+
+If you already ran kubeadm separately and need only the security stack:
+
+```bash
 helm repo add falcosecurity https://falcosecurity.github.io/charts
 helm repo add cilium         https://helm.cilium.io/
 helm repo add kyverno        https://kyverno.github.io/kyverno/
 helm repo update
+helm dependency build .
 
-# 2. Fetch sub-charts
-helm dependency update ./k8s-soar
-
-# 3. Install
-helm install k8s-soar ./k8s-soar \
-  --namespace k8s-soar \
-  --create-namespace
+helm install k8s-soar . \
+  --namespace k8s-soar --create-namespace \
+  --wait --timeout 15m
 ```
 
-## Configuration
+## Enable SOAR (Detect → Isolate)
 
-All options are in [`values.yaml`](./values.yaml). Key overrides:
+Set in `values.yaml` or pass `--set`:
 
 ```yaml
-# Disable a component (e.g. Kyverno)
-kyverno:
-  enabled: false
-
-# Switch Kyverno to enforce mode (blocks policy violations)
-kyverno:
-  validationFailureAction: Enforce
-
-# Point Falco sidekick to a Slack webhook
+soar:
+  responder:
+    enabled: true
 falco:
   falcosidekick:
+    enabled: true
     config:
-      slack:
-        webhookurl: "https://hooks.slack.com/..."
+      webhook:
+        address: "http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook"
+        minimumpriority: "warning"
+```
+
+Then `helm upgrade k8s-soar . -n k8s-soar --wait`. See [docs/thesis/SOAR-LIMITATIONS.md](./docs/thesis/SOAR-LIMITATIONS.md).
+
+## Repository layout
+
+```text
+ansible/          Bare-metal kubeadm bootstrap + Helm install
+values.yaml       Full stack defaults (Cilium + Falco + Tetragon + Kyverno)
+policies/         Kyverno, Falco, Tetragon, quarantine YAML
+lab/              security-lab namespace + victim workload
+scenarios/        Threat matrix + attack simulation runbooks
+scripts/          preflight, verify-stack, load-falco-rules
+docs/             Thesis architecture, methodology, validation
 ```
 
 ## Verify
 
 ```bash
+./scripts/verify-stack.sh
+kubectl get pods -n kube-system -l k8s-app=cilium
 kubectl get pods -n falco
 kubectl get pods -n tetragon
 kubectl get pods -n kyverno
-
-# Stream Falco alerts
-kubectl logs -n falco -l app.kubernetes.io/name=falco -f
-
-# Stream Tetragon kernel events
-kubectl exec -n tetragon ds/tetragon -- tetra getevents -o compact
-
-# List Kyverno policies
-kubectl get cpol,pol -A
 ```
 
-## Publishing
+## Documentation
 
-The chart is automatically built and pushed to GHCR on every push to `main`.
-To publish a release version, push a tag:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-This triggers the workflow to publish `ghcr.io/joesabbagh1/k8s-soar:0.1.0`.
-
-## Roadmap
-
-- [ ] Phase 1: Environment bootstrap (this chart)
-- [ ] Phase 2: Falco rules library (Kyverno ClusterPolicies + Falco custom rules)
-- [ ] Phase 3: SOAR response workflow (Detect → Isolate automation)
+- [Ansible bootstrap](./ansible/README.md)
+- [Architecture](./docs/thesis/ARCHITECTURE.md)
+- [Methodology](./docs/thesis/METHODOLOGY.md)
+- [Reproducibility](./docs/thesis/REPRODUCIBILITY.md)
+- [Threat matrix](./scenarios/threat-matrix.md)
 
 ## License
 
