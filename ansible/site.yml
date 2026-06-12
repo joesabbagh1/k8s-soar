@@ -1,0 +1,284 @@
+---
+- name: Preflight — verify nodes meet k8s-soar requirements
+  hosts: k8s
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Assert kernel version meets minimum for eBPF stack
+      ansible.builtin.assert:
+        that:
+          - ansible_kernel is version(min_kernel_version, '>=')
+        fail_msg: "Kernel {{ ansible_kernel }} < {{ min_kernel_version }} — Falco/Tetragon require a newer kernel"
+        success_msg: "Kernel {{ ansible_kernel }} OK on {{ inventory_hostname }}"
+
+    - name: Check /sys/fs/bpf is mounted (eBPF)
+      ansible.builtin.stat:
+        path: /sys/fs/bpf
+      register: bpf_mount
+      failed_when: not bpf_mount.stat.exists
+
+- name: Prepare nodes — OS and Kubernetes packages
+  hosts: k8s
+  become: true
+  tasks:
+    - name: Purge K3s and Kubernetes remnants
+      ansible.builtin.shell: |
+        if [ -f /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh; fi
+        if [ -f /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh; fi
+        kubeadm reset -f || true
+        rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /etc/kubernetes /var/lib/etcd /etc/cni/net.d $HOME/.kube
+        ip link delete cni0 || true
+        ip link delete flannel.1 || true
+        iptables -F && iptables -t nat -F && iptables -X
+      ignore_errors: true
+      when: nuclear_wipe | bool
+
+    - name: Disable swap
+      ansible.builtin.shell: |
+        swapoff -a
+        sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+    - name: Load kernel modules
+      ansible.builtin.command: "modprobe {{ item }}"
+      loop:
+        - overlay
+        - br_netfilter
+      changed_when: false
+
+    - name: Configure sysctl for Kubernetes networking
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-kubernetes.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+        mode: "0644"
+
+    - name: Apply sysctl settings
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+
+    - name: Install containerd
+      ansible.builtin.apt:
+        name: containerd
+        state: present
+        update_cache: true
+
+    - name: Configure containerd with SystemdCgroup
+      ansible.builtin.shell: |
+        mkdir -p /etc/containerd
+        containerd config default > /etc/containerd/config.toml
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+        systemctl restart containerd
+      changed_when: true
+
+    - name: Install apt dependencies
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gpg
+        state: present
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.shell: |
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+        echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+      args:
+        creates: /etc/apt/sources.list.d/kubernetes.list
+
+    - name: Unhold Kubernetes packages
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: install
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+    - name: Install kubelet, kubeadm, kubectl
+      ansible.builtin.apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: latest
+        update_cache: true
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
+
+- name: Initialize control plane
+  hosts: master
+  become: true
+  tasks:
+    - name: Initialize cluster with kubeadm
+      ansible.builtin.command: >-
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --apiserver-advertise-address={{ apiserver_advertise_address }}
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Wait for API server
+      ansible.builtin.wait_for:
+        host: "{{ apiserver_advertise_address }}"
+        port: 6443
+        delay: 10
+        timeout: 180
+
+    - name: Configure kubeconfig for admin user on master
+      ansible.builtin.shell: |
+        mkdir -p $HOME/.kube
+        cp -f /etc/kubernetes/admin.conf $HOME/.kube/config
+        chown $(id -u):$(id -g) $HOME/.kube/config
+
+    - name: Fetch kubeconfig to operator machine
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ kubeconfig_dest }}"
+        flat: true
+
+    - name: Generate worker join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_cmd
+      until: join_cmd is not failed
+      retries: 6
+      delay: 15
+      changed_when: false
+
+    - name: Store join command for workers
+      ansible.builtin.add_host:
+        name: KUBE_JOIN_HOLDER
+        command: "{{ join_cmd.stdout }}"
+
+    - name: Allow scheduling on control-plane for single-node clusters
+      ansible.builtin.command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      when:
+        - allow_control_plane_scheduling | bool
+        - groups['workers'] | length == 0
+      failed_when: false
+      changed_when: false
+
+- name: Join worker nodes
+  hosts: workers
+  become: true
+  serial: 1
+  tasks:
+    - name: Join cluster
+      ansible.builtin.command: "{{ hostvars['KUBE_JOIN_HOLDER']['command'] }}"
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+- name: Configure operator workstation kubeconfig
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Patch API server address in fetched kubeconfig
+      ansible.builtin.replace:
+        path: "{{ kubeconfig_dest }}"
+        regexp: '127\.0\.0\.1:6443'
+        replace: "{{ apiserver_advertise_address }}:6443"
+      when: configure_localhost | bool
+
+    - name: Print KUBECONFIG export hint
+      ansible.builtin.debug:
+        msg: "export KUBECONFIG={{ kubeconfig_dest }}"
+      when: configure_localhost | bool
+
+- name: Install k8s-soar Helm stack
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  tasks:
+    - name: Skip Helm install when disabled
+      ansible.builtin.meta: end_play
+      when: not (install_k8s_soar | bool)
+
+    - name: Ensure kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_dest }}"
+      register: kubeconfig_stat
+      failed_when: not kubeconfig_stat.stat.exists
+
+    - name: Wait for nodes to register (may be NotReady until CNI installs)
+      ansible.builtin.shell: kubectl --kubeconfig="{{ kubeconfig_dest }}" get nodes -o name
+      register: node_list
+      until: node_list.stdout_lines | length > 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Label worker nodes
+      ansible.builtin.command: >-
+        kubectl --kubeconfig={{ kubeconfig_dest }}
+        label node {{ item }}
+        node-role.kubernetes.io/worker=worker
+        --overwrite
+      loop: "{{ groups['workers'] | default([]) }}"
+      when: groups['workers'] | length > 0
+      changed_when: false
+
+    - name: Check if Helm is installed
+      ansible.builtin.command: helm version --short
+      register: helm_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install Helm
+      ansible.builtin.shell: |
+        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      when: helm_check.rc != 0
+
+    - name: Add Helm chart repositories
+      ansible.builtin.shell: |
+        helm repo add falcosecurity https://falcosecurity.github.io/charts 2>/dev/null || true
+        helm repo add cilium https://helm.cilium.io/ 2>/dev/null || true
+        helm repo add kyverno https://kyverno.github.io/kyverno/ 2>/dev/null || true
+      changed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+
+    - name: Build chart dependencies
+      ansible.builtin.command: helm dependency build .
+      args:
+        chdir: "{{ k8s_soar_chart_path }}"
+
+    - name: Install or upgrade k8s-soar release
+      ansible.builtin.command: >-
+        helm upgrade --install {{ k8s_soar_release }} .
+        --kubeconfig {{ kubeconfig_dest }}
+        --namespace {{ k8s_soar_namespace }}
+        --create-namespace
+        --wait
+        --timeout 15m
+      args:
+        chdir: "{{ k8s_soar_chart_path }}"
+
+    - name: Wait for nodes to become Ready
+      ansible.builtin.shell: kubectl --kubeconfig="{{ kubeconfig_dest }}" get nodes
+      register: nodes_ready
+      until: '" NotReady" not in nodes_ready.stdout'
+      retries: 40
+      delay: 15
+      changed_when: false
+
+    - name: Run verify-stack script
+      ansible.builtin.command: ./scripts/verify-stack.sh
+      args:
+        chdir: "{{ k8s_soar_chart_path }}"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"

@@ -1,0 +1,30 @@
+---
+# Copy to group_vars/all.yml and customize for your client cluster.
+
+cluster_name: k8s-soar-client
+k8s_version: "v1.31"
+pod_network_cidr: "10.244.0.0/16"
+
+# IP of the control-plane node (must match master host in inventory)
+apiserver_advertise_address: "192.168.1.10"
+
+# Where Ansible fetches kubeconfig on the operator machine
+kubeconfig_dest: "{{ lookup('env', 'HOME') }}/.kube/config-{{ cluster_name }}"
+
+# Optional: patch localhost kubeconfig and print export hint
+configure_localhost: true
+
+# Wipe existing k3s/kubeadm state before install (destructive)
+nuclear_wipe: true
+
+# Install k8s-soar Helm stack after kubeadm (Cilium as CNI)
+install_k8s_soar: true
+k8s_soar_chart_path: "{{ playbook_dir }}/.."
+k8s_soar_release: k8s-soar
+k8s_soar_namespace: k8s-soar
+
+# Minimum kernel for Falco modern_eBPF / Tetragon
+min_kernel_version: "5.10"
+
+# Single-node: set true when workers group is empty
+allow_control_plane_scheduling: true
