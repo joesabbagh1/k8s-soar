@@ -6,27 +6,27 @@ Provisions a kubeadm cluster on bare-metal Linux servers, then installs the k8s-
 
 ```bash
 cd ansible
-chmod +x pre-setup.sh setup.sh
-./pre-setup.sh    # installs packages, detects IP, writes config (SOAR enabled)
-./setup.sh        # kubeadm + full security stack
+chmod +x setup.sh
+./setup.sh    # packages + auto IP + config + kubeadm + full security stack (SOAR enabled)
 ```
 
-## What pre-setup.sh does
+## What setup.sh does first (pre-setup)
+
+Before Ansible runs, `setup.sh` automatically:
 
 1. Installs **ansible**, **conntrack**, **ethtool**, **socat**, **ipset**, and other apt dependencies
-2. Detects this host's IP (default route source address)
-3. Writes **`inventory.ini`** — single-node, `ansible_connection=local`
-4. Writes **`group_vars/all.yml`** — matching `apiserver_advertise_address`, **`enable_soar: true`**
+2. Auto-detects this host's IP (`ip route get 1.1.1.1` → source address)
+3. Renders **`inventory.ini`** and **`group_vars/all.yml`** from the `*.example` templates, replacing `{{PRESETUP_HOST_IP}}` and `{{PRESETUP_ANSIBLE_USER}}`
 
 Options:
 
 ```bash
-./pre-setup.sh --force          # overwrite existing inventory and group_vars
-./pre-setup.sh --ip 172.16.0.2  # set IP manually
-K8S_SOAR_CLUSTER_NAME=my-cluster ./pre-setup.sh
+./setup.sh --force          # regenerate config from *.example files
+./setup.sh --ip 172.16.0.2  # only if auto-detect picks the wrong interface
+./setup.sh --pre-setup-only # packages + config only (same as ./pre-setup.sh)
 ```
 
-## What setup.sh does
+## Ansible bootstrap phase
 
 1. Optional nuclear wipe of prior k3s/kubeadm installs
 2. OS prep: swap off, kernel modules, containerd, kubeadm/kubelet/kubectl
@@ -37,7 +37,7 @@ K8S_SOAR_CLUSTER_NAME=my-cluster ./pre-setup.sh
 
 ## Manual config (multi-node)
 
-Skip pre-setup and copy examples yourself:
+Skip auto-config and copy examples yourself:
 
 ```bash
 cp inventory.example.ini inventory.ini

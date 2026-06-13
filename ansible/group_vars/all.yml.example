@@ -1,12 +1,13 @@
 ---
 # Copy to group_vars/all.yml and customize for your client cluster.
+# Or run ./setup.sh — it copies this file and replaces {{PRESETUP_*}} placeholders.
 
 cluster_name: k8s-soar-client
 k8s_version: "v1.31"
 pod_network_cidr: "10.244.0.0/16"
 
 # IP of the control-plane node (must match master host in inventory)
-apiserver_advertise_address: "192.168.1.10"
+apiserver_advertise_address: "{{PRESETUP_HOST_IP}}"
 
 # Where Ansible fetches kubeconfig on the operator machine
 kubeconfig_dest: "{{ lookup('env', 'HOME') }}/.kube/config-{{ cluster_name }}"

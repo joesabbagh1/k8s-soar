@@ -29,8 +29,7 @@
 
 ```bash
 cd ansible
-chmod +x pre-setup.sh setup.sh
-./pre-setup.sh    # packages + auto IP + config (SOAR on by default)
+chmod +x setup.sh
 ./setup.sh
 ```
 
@@ -53,7 +52,7 @@ Each scenario folder has a `README.md` with expected alerts and evidence to capt
 
 ## Enable SOAR (Detect → Isolate)
 
-SOAR is **enabled by default** when using `./ansible/pre-setup.sh` (`enable_soar: true`).
+SOAR is **enabled by default** when using `./ansible/setup.sh` (`enable_soar: true`).
 
 To disable, set in `group_vars/all.yml`:
 
