@@ -78,6 +78,10 @@
           - ca-certificates
           - curl
           - gpg
+          - conntrack
+          - ethtool
+          - socat
+          - ipset
         state: present
 
     - name: Add Kubernetes apt repository
