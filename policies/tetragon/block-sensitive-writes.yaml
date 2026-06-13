@@ -26,4 +26,5 @@ spec:
                 - /pause
                 - /bin/sleep
                 - /bin/sh
+                - /bin/busybox
                 - /usr/sbin/nginx
