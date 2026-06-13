@@ -20,8 +20,7 @@ spec:
       selectors:
         - matchArgs:
             - index: 0
-              type: "string"
-              operator: "Prefix"
+              operator: Prefix
               values:
                 - "/etc/shadow"
                 - "/etc/sudoers"
