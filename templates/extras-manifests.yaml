@@ -1,9 +1,11 @@
 {{/*
   Lab and policies-as-code manifests bundled with the Helm release.
   Source of truth remains policies/ and lab/ in the repo (.Files.Glob).
-  Lab is rendered before policies (quarantine CNP targets security-lab).
+  Render lab/namespace.yaml explicitly first (glob lab/** only matches subdirs).
 */}}
 {{- if .Values.lab.enabled }}
+---
+{{ $.Files.Get "lab/namespace.yaml" }}
 {{- range $path, $_ := .Files.Glob "lab/**/*.yaml" }}
 {{- if not (hasSuffix "kustomization.yaml" $path) }}
 ---
