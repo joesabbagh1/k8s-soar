@@ -328,6 +328,7 @@
         -f {{ k8s_soar_chart_path }}/.generated/helm-values.yaml
         --set policies.enabled=false
         --set lab.enabled=false
+        --set tetragon.crds.installMethod=operator
         --wait
         --timeout 15m
       args:

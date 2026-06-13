@@ -6,7 +6,16 @@ TIMEOUT="${K8S_SOAR_CRD_WAIT_TIMEOUT:-600}"
 
 wait_crd() {
   local crd=$1
-  echo ">>> Waiting for CRD ${crd} (timeout ${TIMEOUT}s)..."
+  echo ">>> Waiting for CRD ${crd} to appear (timeout ${TIMEOUT}s)..."
+  local end=$((SECONDS + TIMEOUT))
+  until kubectl get crd "${crd}" >/dev/null 2>&1; do
+    if (( SECONDS >= end )); then
+      echo "ERROR: CRD ${crd} never appeared" >&2
+      exit 1
+    fi
+    sleep 5
+  done
+  echo ">>> Waiting for CRD ${crd} to become Established..."
   kubectl wait --for=condition=Established "crd/${crd}" --timeout="${TIMEOUT}s"
 }
 

@@ -29,6 +29,7 @@ echo ">>> Installing k8s-soar core stack (Cilium, Falco, Tetragon, Kyverno)..."
 helm "${helm_args[@]}" \
   --set policies.enabled=false \
   --set lab.enabled=false \
+  --set tetragon.crds.installMethod=operator \
   "$@"
 
 "${SCRIPT_DIR}/wait-for-policy-crds.sh"

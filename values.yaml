@@ -79,9 +79,8 @@ falco:
 tetragon:
   enabled: true
 
-  # Install TracingPolicy CRDs with Helm (default "operator" can lag after --wait)
-  crds:
-    installMethod: helm
+  # CRDs are installed by the Tetragon operator (default). Do not use "helm" on
+  # upgrades — operator-owned CRDs lack Helm labels and will block the release.
 
   tetragon:
     grpc:
