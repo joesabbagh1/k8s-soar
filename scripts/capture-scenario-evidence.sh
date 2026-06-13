@@ -22,6 +22,16 @@ if kubectl get deploy -n falco -l app.kubernetes.io/name=falcosidekick >/dev/nul
   if [[ -z "$sidekick_logs" ]]; then
     echo "    (no logs)"
   else
-    echo "$sidekick_logs" | grep -iE "${PATTERN}|webhook|Shell spawned|K8sSoar" || echo "    (no matches)"
+    echo "$sidekick_logs" | grep -iE "${PATTERN}|webhook|Shell spawned|K8sSoar|quarantined|status:ok" || echo "    (no matches)"
+  fi
+fi
+
+if kubectl get deploy -n k8s-soar k8s-soar-responder >/dev/null 2>&1; then
+  echo ">>> SOAR responder (last ${SINCE}):"
+  responder_logs="$(kubectl logs -n k8s-soar deploy/k8s-soar-responder --since="$SINCE" 2>/dev/null || true)"
+  if [[ -z "$responder_logs" ]]; then
+    echo "    (no logs)"
+  else
+    echo "$responder_logs" | grep -iE "${PATTERN}|quarantined|webhook|error" || echo "    (no matches)"
   fi
 fi

@@ -20,7 +20,9 @@ reliably sees `spawned_process`.
 
 | Tool | Expected |
 |------|----------|
-| Falco | `K8sSoar Shell In Victim Container` or default terminal shell rule |
+| Falco | `K8sSoar Shell In Victim Container` |
+| falcosidekick | Webhook POST success (no `422 missing pod identity`) |
+| SOAR responder | `quarantined pod security-lab/...` in logs; pod label `security.quarantine=true` |
 | Kyverno | — |
 | Tetragon | process exec event in security-lab |
 
