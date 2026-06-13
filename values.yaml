@@ -53,6 +53,10 @@ falco:
   enabled: true
   namespaceOverride: falco
 
+  collectors:
+    containerEngine:
+      enabled: true
+
   driver:
     kind: modern_ebpf
 

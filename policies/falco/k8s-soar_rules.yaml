@@ -4,11 +4,8 @@
 - rule: K8sSoar Reverse Shell Outbound
   desc: Detect outbound connection patterns consistent with reverse shells
   condition: >
-    spawned_process and container and
+    outbound and container and
     proc.name in (bash, sh, dash, zsh) and
-    (fd.typechar = 4 or fd.typechar = 6) and
-    fd.ip != "0.0.0.0" and fd.l4proto = tcp and
-    inbound_outbound = outbound and
     k8s.ns.name = "security-lab"
   output: >
     Reverse shell suspected (k8s-soar scenario 04)
