@@ -82,20 +82,29 @@ ansible-playbook -i inventory.ini site.yml "${EXTRA_ARGS[@]}" "${ANSIBLE_ARGS[@]
 if [[ -f group_vars/all.yml ]]; then
   CLUSTER_NAME="$(grep '^cluster_name:' group_vars/all.yml | awk '{print $2}' | tr -d '"')"
   KUBECONFIG_PATH="${HOME}/.kube/config-${CLUSTER_NAME:-k8s-soar-client}"
-  if [[ -f "$KUBECONFIG_PATH" ]]; then
+  ENV_FILE="${HOME}/.kube/${CLUSTER_NAME:-k8s-soar-client}.env"
+
+  if [[ -f "$ENV_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$ENV_FILE"
+  elif [[ -f "$KUBECONFIG_PATH" ]]; then
     export KUBECONFIG="$KUBECONFIG_PATH"
     if grep -qE '^enable_soar:[[:space:]]*true' group_vars/all.yml; then
       export K8S_SOAR_ENABLE_SOAR=1
     fi
+  fi
+
+  if [[ -f "$KUBECONFIG_PATH" ]]; then
     echo ""
     echo ">>> Cluster nodes:"
     kubectl get nodes
     echo ""
-    echo ">>> KUBECONFIG is set for this session (~/.bashrc updated for new shells)"
-    if [[ "${K8S_SOAR_ENABLE_SOAR:-0}" == "1" ]]; then
-      echo ">>> K8S_SOAR_ENABLE_SOAR=1 is set for this session"
+    if [[ -f "$ENV_FILE" ]]; then
+      echo ">>> Cluster env loaded in this script session."
+      echo ">>> In your terminal prompt, run once:"
+      echo "    source \"${ENV_FILE}\""
+      echo ">>> (New shells pick it up automatically via ~/.bashrc.)"
     fi
-    echo ">>> Other terminals: source ~/.bashrc"
   fi
 fi
 

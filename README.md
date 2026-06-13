@@ -37,7 +37,11 @@ This automatically provisions the cluster and security stack. **Attack scenarios
 
 ## Run attack scenarios (manual — one at a time)
 
-After install, `kubectl` works in new shells automatically (`KUBECONFIG` is written to `~/.bashrc`). In an already-open terminal run `source ~/.bashrc` once.
+After install, new terminals load cluster access automatically via `~/.bashrc`. In the same terminal where you ran `./setup.sh`, run once:
+
+```bash
+source ~/.kube/k8s-soar-client.env
+```
 
 ```bash
 # Pick a scenario — do not run all at once unless you intend to

@@ -31,7 +31,7 @@ Options:
 1. Optional nuclear wipe of prior k3s/kubeadm installs
 2. OS prep: swap off, kernel modules, containerd, kubeadm/kubelet/kubectl
 3. `kubeadm init` on master (+ worker join when workers are defined)
-4. Fetch kubeconfig to `~/.kube/config-<cluster_name>` and add `KUBECONFIG` (and `K8S_SOAR_ENABLE_SOAR=1` when SOAR is on) to `~/.bashrc` / `~/.zshrc`
+4. Fetch kubeconfig to `~/.kube/config-<cluster_name>`, write `~/.kube/<cluster_name>.env`, and wire `~/.bashrc` / `~/.zshrc` to source it
 5. Helm install k8s-soar (Cilium + Falco + Tetragon + Kyverno + policies + lab + SOAR)
 6. Run `scripts/verify-stack.sh`
 
