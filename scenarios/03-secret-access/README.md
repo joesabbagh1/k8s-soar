@@ -10,6 +10,8 @@ Read the mounted service account token from the victim pod.
 
 ```bash
 ./run.sh
+# or
+./scripts/capture-scenario-evidence.sh 3m 'K8sSoar Sensitive Credential Access'
 ```
 
 ## Expected evidence

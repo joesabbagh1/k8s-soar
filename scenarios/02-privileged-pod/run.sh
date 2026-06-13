@@ -22,4 +22,7 @@ spec:
         path: /
         type: Directory
 EOF
-echo "Check Kyverno PolicyReports — pod may be blocked when policies are Enforce mode."
+echo ">>> Admission result (PSA baseline blocks privileged + hostPath):"
+kubectl get pod scenario-02-privileged -n security-lab 2>&1 || true
+echo ">>> Kyverno PolicyReports (audit):"
+kubectl get policyreport -A 2>/dev/null | grep -i security-lab || echo "    (none yet — background scan may take a minute)"
