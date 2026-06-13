@@ -37,10 +37,10 @@ This automatically provisions the cluster and security stack. **Attack scenarios
 
 ## Run attack scenarios (manual — one at a time)
 
-After install, new terminals load cluster access automatically via `~/.bashrc`. In the same terminal where you ran `./setup.sh`, run once:
+After install, new terminals work automatically. In the same terminal where you ran `./setup.sh`, run once:
 
 ```bash
-source ~/.kube/k8s-soar-client.env
+source ~/.bashrc
 ```
 
 ```bash

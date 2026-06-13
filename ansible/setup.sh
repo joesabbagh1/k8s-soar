@@ -100,10 +100,10 @@ if [[ -f group_vars/all.yml ]]; then
     kubectl get nodes
     echo ""
     if [[ -f "$ENV_FILE" ]]; then
-      echo ">>> Cluster env loaded in this script session."
-      echo ">>> In your terminal prompt, run once:"
-      echo "    source \"${ENV_FILE}\""
-      echo ">>> (New shells pick it up automatically via ~/.bashrc.)"
+      echo ">>> Cluster env loaded for final kubectl check."
+      echo ">>> This terminal started before ~/.bashrc was updated — run once:"
+      echo "    source ~/.bashrc"
+      echo ">>> Or open a new terminal (no source needed)."
     fi
   fi
 fi

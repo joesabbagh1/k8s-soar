@@ -246,9 +246,8 @@
       ansible.builtin.debug:
         msg: >-
           Cluster env written to {{ kubeconfig_env_file }}.
-          New shells load it via ~/.bashrc
-          {{- ' and ~/.zshrc' if (zshrc_stat.stat.exists | default(false)) else '' }}.
-          In this terminal run: source {{ kubeconfig_env_file }}
+          ~/.bashrc sources it automatically in new terminals.
+          In the terminal where you ran setup, run once: source ~/.bashrc
       when: configure_localhost | bool
 
 - name: Install k8s-soar Helm stack
