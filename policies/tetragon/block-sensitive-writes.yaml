@@ -18,13 +18,13 @@ spec:
         - index: 0
           type: "file"
       selectors:
-        - matchActions:
-            - action: Sigkill
-          matchBinaries:
-            - operator: NotIn
+        - matchArgs:
+            - index: 0
+              type: "string"
+              operator: "Prefix"
               values:
-                - /pause
-                - /bin/sleep
-                - /bin/sh
-                - /bin/busybox
-                - /usr/sbin/nginx
+                - "/etc/shadow"
+                - "/etc/sudoers"
+                - "/root/"
+          matchActions:
+            - action: Sigkill

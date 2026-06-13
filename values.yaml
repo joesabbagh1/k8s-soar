@@ -62,6 +62,8 @@ falco:
       enabled: false
     containerEngine:
       enabled: true
+    kubernetes:
+      enabled: true
 
   driver:
     kind: modern_ebpf
