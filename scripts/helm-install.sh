@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or upgrade k8s-soar with Falco rules, policies, and lab applied automatically.
+# Install or upgrade k8s-soar: core stack first, then policies/lab after CRDs exist.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,6 +8,7 @@ GENERATED_DIR="${ROOT_DIR}/.generated"
 OVERLAY="${GENERATED_DIR}/helm-values.yaml"
 RELEASE="${K8S_SOAR_RELEASE:-k8s-soar}"
 NAMESPACE="${K8S_SOAR_NAMESPACE:-k8s-soar}"
+HELM_WAIT_TIMEOUT="${K8S_SOAR_HELM_TIMEOUT:-15m}"
 
 mkdir -p "$GENERATED_DIR"
 "${SCRIPT_DIR}/render-helm-values.sh" "$OVERLAY"
@@ -15,13 +16,25 @@ mkdir -p "$GENERATED_DIR"
 cd "$ROOT_DIR"
 helm dependency build .
 
-helm upgrade --install "$RELEASE" . \
-  --namespace "$NAMESPACE" \
-  --create-namespace \
-  -f "$OVERLAY" \
-  --wait \
-  --timeout 15m \
+helm_args=(
+  upgrade --install "$RELEASE" .
+  --namespace "$NAMESPACE"
+  --create-namespace
+  -f "$OVERLAY"
+  --wait
+  --timeout "$HELM_WAIT_TIMEOUT"
+)
+
+echo ">>> Installing k8s-soar core stack (Cilium, Falco, Tetragon, Kyverno)..."
+helm "${helm_args[@]}" \
+  --set policies.enabled=false \
+  --set lab.enabled=false \
   "$@"
+
+"${SCRIPT_DIR}/wait-for-policy-crds.sh"
+
+echo ">>> Applying bundled policies and security-lab manifests..."
+helm "${helm_args[@]}" "$@"
 
 echo ">>> k8s-soar installed (stack + Falco rules + policies + lab)"
 if [[ -n "${KUBECONFIG:-}" ]] || [[ -f "${HOME}/.kube/config" ]]; then
