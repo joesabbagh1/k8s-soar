@@ -4,7 +4,7 @@
 
 ## Attack
 
-Run a process named like a miner inside the victim pod.
+Run a process with `proc.name=xmrig` inside the victim pod (`exec -a` on busybox).
 
 ## Run
 
