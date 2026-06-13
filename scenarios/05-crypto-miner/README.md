@@ -4,7 +4,7 @@
 
 ## Attack
 
-Run a process with `proc.name=xmrig` inside the victim pod (`exec -a` on busybox).
+Spawn a process with `proc.name=xmrig` in `security-lab`. The victim pod uses busybox (multiplexed binary), so the script runs a one-shot `debian:bookworm-slim` pod that copies `sleep` to `/tmp/xmrig` and executes it — Falco matches on the process name.
 
 ## Run
 

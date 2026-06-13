@@ -2,11 +2,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-POD=$(kubectl get pod -n security-lab -l app=victim -o jsonpath='{.items[0].metadata.name}')
 
-echo ">>> Simulate miner-like process in ${POD}..."
-# busybox treats a symlink named xmrig as an applet name (fails); exec -a sets proc.name for Falco.
-kubectl exec -n security-lab "$POD" -- sh -c 'exec -a xmrig /bin/sleep 5'
+# busybox uses argv[0] as applet name — symlinks/exec -a named xmrig fail inside busybox.
+# Copy coreutils sleep to /tmp/xmrig in a one-shot pod so Falco sees proc.name=xmrig.
+SCENARIO_POD="scenario-05-miner"
+echo ">>> Spawn miner-like process in security-lab (${SCENARIO_POD})..."
+kubectl delete pod "$SCENARIO_POD" -n security-lab --ignore-not-found --wait=true --timeout=60s
+kubectl run "$SCENARIO_POD" -n security-lab --rm -i --restart=Never \
+  --labels="scenario-target=true" \
+  --image=debian:bookworm-slim \
+  -- sh -c 'cp "$(command -v sleep)" /tmp/xmrig && chmod +x /tmp/xmrig && /tmp/xmrig 5'
 
 echo ">>> Waiting for Falco..."
 sleep 8
