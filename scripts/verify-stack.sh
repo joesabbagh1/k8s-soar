@@ -148,6 +148,11 @@ fi
 if kubectl get deploy -n "$RELEASE_NS" k8s-soar-responder >/dev/null 2>&1; then
   wait_for_pods "$RELEASE_NS" app.kubernetes.io/component=soar-responder 120 || true
   ok "SOAR responder deployed"
+  if kubectl get configmap -n "$RELEASE_NS" k8s-soar-responder -o yaml 2>/dev/null | grep -q 'output_fields'; then
+    ok "SOAR responder webhook parser up to date"
+  else
+    bad "SOAR responder ConfigMap stale — run ./scripts/upgrade-soar.sh"
+  fi
 fi
 
 # --- nodes ready ---
