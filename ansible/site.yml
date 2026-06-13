@@ -88,7 +88,11 @@
       args:
         creates: /etc/apt/sources.list.d/kubernetes.list
 
-    - name: Unhold Kubernetes packages
+    - name: Refresh apt cache after adding Kubernetes repository
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Unhold Kubernetes packages if previously held
       ansible.builtin.dpkg_selections:
         name: "{{ item }}"
         selection: install
@@ -96,6 +100,8 @@
         - kubelet
         - kubeadm
         - kubectl
+      failed_when: false
+      changed_when: false
 
     - name: Install kubelet, kubeadm, kubectl
       ansible.builtin.apt:
