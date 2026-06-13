@@ -79,7 +79,8 @@ run_pre_setup() {
     conntrack \
     ethtool \
     socat \
-    ipset
+    ipset \
+    python3-yaml
 
   mkdir -p group_vars
   pre_setup_write_from_example inventory.example.ini inventory.ini

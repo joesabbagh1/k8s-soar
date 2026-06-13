@@ -60,10 +60,10 @@ jobs:
       - name: Template chart
         run: |
           chmod +x scripts/*.sh
-          ./scripts/render-helm-values.sh .generated/helm-values.yaml
-          helm template k8s-soar . \
-            -f .generated/helm-values.yaml \
-            --debug > /dev/null
+          ./scripts/render-helm-values.sh
+          helm template k8s-soar . -f .generated/k8s-soar-values.yaml --debug > /dev/null
+          helm template cilium charts/cilium-*.tgz -f .generated/cilium-values.yaml > /dev/null
+          helm template falco charts/falco-*.tgz -f .generated/falco-values.yaml > /dev/null
 
       - name: Validate policies kustomize
         run: kubectl kustomize policies/ > /dev/null

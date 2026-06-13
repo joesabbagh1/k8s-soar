@@ -75,7 +75,7 @@ Then re-run `./setup.sh`.
 | Step | Automated by |
 |------|----------------|
 | OS + kubeadm cluster | Ansible |
-| Cilium / Falco / Tetragon / Kyverno | Helm |
+| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`scripts/helm-install.sh`) |
 | Falco custom rules | `render-helm-values.sh` overlay |
 | Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
 | security-lab namespace + victim app | `scripts/apply-policies-lab.sh` |

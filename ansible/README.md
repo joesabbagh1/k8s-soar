@@ -32,7 +32,7 @@ Options:
 2. OS prep: swap off, kernel modules, containerd, kubeadm/kubelet/kubectl
 3. `kubeadm init` on master (+ worker join when workers are defined)
 4. Fetch kubeconfig to `~/.kube/config-<cluster_name>`, write `~/.kube/<cluster_name>.env`, and wire `~/.bashrc` / `~/.zshrc` to source it
-5. Helm install k8s-soar (Cilium + Falco + Tetragon + Kyverno + policies + lab + SOAR)
+5. Helm install stack via split releases (`scripts/helm-install.sh`) + policies/lab
 6. Run `scripts/verify-stack.sh`
 
 ## Manual config (multi-node)
