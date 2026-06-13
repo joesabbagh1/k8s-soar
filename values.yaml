@@ -4,13 +4,14 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Bundled manifests — lab + Kyverno/Tetragon/quarantine policies (from policies/ and lab/)
+# Policies and lab — applied via scripts/apply-policies-lab.sh after Helm install
+# (not bundled in the chart; umbrella release Secret would exceed the 1MB limit)
 # ------------------------------------------------------------------------------
 policies:
-  enabled: true
+  enabled: false
 
 lab:
-  enabled: true
+  enabled: false
 
 # ------------------------------------------------------------------------------
 # SOAR — Detect → Isolate response automation

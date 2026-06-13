@@ -77,8 +77,8 @@ Then re-run `./setup.sh`.
 | OS + kubeadm cluster | Ansible |
 | Cilium / Falco / Tetragon / Kyverno | Helm |
 | Falco custom rules | `render-helm-values.sh` overlay |
-| Kyverno + Tetragon + quarantine policies | Helm (`templates/extras-manifests.yaml`) |
-| security-lab namespace + victim app | Helm (`templates/extras-manifests.yaml`) |
+| Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
+| security-lab namespace + victim app | `scripts/apply-policies-lab.sh` |
 | SOAR responder + webhook | `enable_soar: true` or `K8S_SOAR_ENABLE_SOAR=1` |
 | Attack scenario execution | **Manual only** — `./scenarios/NN-name/run.sh` when you choose |
 | Kyverno Enforce mode | Optional — policies ship in Audit mode |

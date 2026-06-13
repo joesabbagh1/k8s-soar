@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or upgrade k8s-soar: core stack first, then policies/lab after CRDs exist.
+# Install or upgrade k8s-soar: Helm stack, then kubectl apply for policies/lab.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,15 +27,12 @@ helm_args=(
 
 echo ">>> Installing k8s-soar core stack (Cilium, Falco, Tetragon, Kyverno)..."
 helm "${helm_args[@]}" \
-  --set policies.enabled=false \
-  --set lab.enabled=false \
   --set tetragon.crds.installMethod=operator \
   "$@"
 
 "${SCRIPT_DIR}/wait-for-policy-crds.sh"
 
-echo ">>> Applying bundled policies and security-lab manifests..."
-helm "${helm_args[@]}" "$@"
+"${SCRIPT_DIR}/apply-policies-lab.sh"
 
 echo ">>> k8s-soar installed (stack + Falco rules + policies + lab)"
 if [[ -n "${KUBECONFIG:-}" ]] || [[ -f "${HOME}/.kube/config" ]]; then

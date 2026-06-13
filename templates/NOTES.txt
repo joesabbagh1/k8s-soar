@@ -47,9 +47,9 @@ Verify the stack is running:
   kubectl get pods -n kyverno
 {{- end }}
 
-Apply policies and lab (included automatically by Helm):
-  policies.enabled: {{ .Values.policies.enabled }}
-  lab.enabled:          {{ .Values.lab.enabled }}
+Apply policies and lab (after Helm install):
+
+  ./scripts/apply-policies-lab.sh
 
 Run attack scenarios manually when ready (not part of install):
   ./scenarios/01-shell-in-container/run.sh
