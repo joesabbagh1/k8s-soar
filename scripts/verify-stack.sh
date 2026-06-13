@@ -11,6 +11,8 @@ pass=0
 warn=0
 fail=0
 
+RELEASE_NS="${K8S_SOAR_NAMESPACE:-k8s-soar}"
+
 ok()   { echo -e "${GREEN}PASS${NC} $*"; pass=$((pass + 1)); }
 warn() { echo -e "${YELLOW}WARN${NC} $*"; warn=$((warn + 1)); }
 bad()  { echo -e "${RED}FAIL${NC} $*"; fail=$((fail + 1)); }
@@ -21,10 +23,27 @@ wait_for_pods() {
   local timeout=${3:-300}
   if kubectl wait --for=condition=ready pod -n "$ns" -l "$selector" --timeout="${timeout}s" >/dev/null 2>&1; then
     ok "pods ready in ${ns} (${selector})"
-  else
-    bad "pods not ready in ${ns} (${selector})"
-    kubectl get pods -n "$ns" -l "$selector" 2>/dev/null || true
+    return 0
   fi
+  bad "pods not ready in ${ns} (${selector})"
+  kubectl get pods -n "$ns" -l "$selector" 2>/dev/null || true
+  return 1
+}
+
+pods_running() {
+  local selector=$1
+  shift
+  local ns
+  for ns in "$@"; do
+    [[ -n "$ns" ]] || continue
+    if kubectl get pods -n "$ns" -l "$selector" --no-headers 2>/dev/null | grep -q .; then
+      if ! kubectl get pods -n "$ns" -l "$selector" --no-headers 2>/dev/null | grep -qv Running; then
+        echo "${ns}"
+        return 0
+      fi
+    fi
+  done
+  return 1
 }
 
 echo "=== k8s-soar verify-stack ==="
@@ -36,61 +55,82 @@ if ! kubectl cluster-info >/dev/null 2>&1; then
 fi
 ok "cluster reachable"
 
-# --- Cilium (optional) ---
-if kubectl get daemonset -n kube-system cilium >/dev/null 2>&1; then
-  wait_for_pods kube-system k8s-app=cilium 600
-  if kubectl get pods -n kube-system -l k8s-app=cilium --no-headers 2>/dev/null | grep -qv Running; then
+# --- Cilium ---
+cilium_ns=""
+for ns in kube-system "$RELEASE_NS"; do
+  if kubectl get daemonset -n "$ns" -l k8s-app=cilium >/dev/null 2>&1 \
+    || kubectl get daemonset -n "$ns" cilium >/dev/null 2>&1; then
+    cilium_ns="$ns"
+    break
+  fi
+done
+if [[ -n "$cilium_ns" ]]; then
+  wait_for_pods "$cilium_ns" "k8s-app=cilium" 600 || true
+  if kubectl get pods -n "$cilium_ns" -l k8s-app=cilium --no-headers 2>/dev/null | grep -qv Running; then
     bad "some Cilium pods not Running"
   else
     ok "Cilium daemonset healthy"
   fi
+elif kubectl get pods -A -l app.kubernetes.io/name=cilium-agent --no-headers 2>/dev/null | grep -q Running; then
+  ok "Cilium agent pods running"
 else
-  bad "Cilium not installed — run k8s-soar Helm install"
+  bad "Cilium not found (checked kube-system and ${RELEASE_NS})"
 fi
 
 # --- Falco ---
-if kubectl get ns falco >/dev/null 2>&1; then
-  wait_for_pods falco app.kubernetes.io/name=falco 300
-  if kubectl logs -n falco -l app.kubernetes.io/name=falco --tail=50 2>/dev/null | grep -q .; then
+falco_ns=""
+if ns="$(pods_running app.kubernetes.io/name=falco falco "$RELEASE_NS")"; then
+  falco_ns="$ns"
+  wait_for_pods "$falco_ns" "app.kubernetes.io/name=falco" 300 || true
+  if kubectl logs -n "$falco_ns" -l app.kubernetes.io/name=falco --tail=50 2>/dev/null | grep -q .; then
     ok "Falco producing logs"
   else
     warn "Falco logs empty (may still be starting)"
   fi
+elif kubectl get ns falco >/dev/null 2>&1 || kubectl get ns "$RELEASE_NS" >/dev/null 2>&1; then
+  bad "Falco not running (checked falco and ${RELEASE_NS})"
 else
-  warn "falco namespace missing"
+  warn "Falco namespace missing"
 fi
 
 # --- Tetragon ---
-if kubectl get ns tetragon >/dev/null 2>&1; then
-  wait_for_pods kube-system app.kubernetes.io/name=tetragon 300 2>/dev/null || \
-  wait_for_pods tetragon app.kubernetes.io/name=tetragon 300 2>/dev/null || \
-  warn "Tetragon pod selector may differ — check manually"
-  if kubectl get pods -A -l app.kubernetes.io/name=tetragon --no-headers 2>/dev/null | grep -q Running; then
-    ok "Tetragon running"
-  else
-    warn "Tetragon pods not confirmed Running"
-  fi
+if ns="$(pods_running app.kubernetes.io/name=tetragon kube-system tetragon "$RELEASE_NS")"; then
+  wait_for_pods "$ns" "app.kubernetes.io/name=tetragon" 300 || true
+  ok "Tetragon running"
 else
-  warn "tetragon namespace missing — check helm release"
+  bad "Tetragon not running (checked kube-system, tetragon, ${RELEASE_NS})"
 fi
 
 # --- Kyverno ---
-if kubectl get ns kyverno >/dev/null 2>&1; then
-  wait_for_pods kyverno app.kubernetes.io/component=admission-controller 300 2>/dev/null || \
-  wait_for_pods kyverno app.kubernetes.io/name=kyverno 300 2>/dev/null || \
-  warn "Kyverno pod selector may differ"
-  if kubectl get validatingwebhookconfigurations 2>/dev/null | grep -qi kyverno; then
-    ok "Kyverno admission webhook registered"
+if ns="$(pods_running app.kubernetes.io/name=kyverno-admission-controller kyverno "$RELEASE_NS")"; then
+  wait_for_pods "$ns" "app.kubernetes.io/name=kyverno-admission-controller" 300 || true
+  ok "Kyverno admission controller ready"
+elif ns="$(pods_running app.kubernetes.io/component=admission-controller kyverno "$RELEASE_NS")"; then
+  wait_for_pods "$ns" "app.kubernetes.io/component=admission-controller" 300 || true
+  ok "Kyverno admission controller ready"
+else
+  bad "Kyverno admission controller not running (checked kyverno and ${RELEASE_NS})"
+fi
+if kubectl get validatingwebhookconfigurations 2>/dev/null | grep -qi kyverno; then
+  ok "Kyverno admission webhook registered"
+else
+  warn "Kyverno webhook not found"
+fi
+
+# --- security-lab ---
+if kubectl get ns security-lab >/dev/null 2>&1; then
+  if kubectl get pods -n security-lab --no-headers 2>/dev/null | grep -q .; then
+    wait_for_pods security-lab app=victim 180 || warn "victim workload not ready yet"
   else
-    warn "Kyverno webhook not found"
+    warn "security-lab has no pods (run ./scripts/apply-policies-lab.sh)"
   fi
 else
-  warn "kyverno namespace missing"
+  warn "security-lab namespace missing"
 fi
 
 # --- SOAR responder (optional) ---
-if kubectl get deploy -n k8s-soar k8s-soar-responder >/dev/null 2>&1; then
-  wait_for_pods k8s-soar app.kubernetes.io/component=soar-responder 120
+if kubectl get deploy -n "$RELEASE_NS" k8s-soar-responder >/dev/null 2>&1; then
+  wait_for_pods "$RELEASE_NS" app.kubernetes.io/component=soar-responder 120 || true
   ok "SOAR responder deployed"
 fi
 
