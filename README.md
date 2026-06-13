@@ -37,11 +37,9 @@ This automatically provisions the cluster and security stack. **Attack scenarios
 
 ## Run attack scenarios (manual — one at a time)
 
-After install, run scenarios individually for your demo or thesis evidence:
+After install, `kubectl` works in new shells automatically (`KUBECONFIG` is written to `~/.bashrc`). In an already-open terminal run `source ~/.bashrc` once.
 
 ```bash
-export KUBECONFIG=~/.kube/config-<cluster_name>
-
 # Pick a scenario — do not run all at once unless you intend to
 ./scenarios/01-shell-in-container/run.sh
 ./scenarios/02-privileged-pod/run.sh

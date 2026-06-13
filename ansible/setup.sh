@@ -84,11 +84,18 @@ if [[ -f group_vars/all.yml ]]; then
   KUBECONFIG_PATH="${HOME}/.kube/config-${CLUSTER_NAME:-k8s-soar-client}"
   if [[ -f "$KUBECONFIG_PATH" ]]; then
     export KUBECONFIG="$KUBECONFIG_PATH"
+    if grep -qE '^enable_soar:[[:space:]]*true' group_vars/all.yml; then
+      export K8S_SOAR_ENABLE_SOAR=1
+    fi
     echo ""
     echo ">>> Cluster nodes:"
     kubectl get nodes
     echo ""
-    echo ">>> export KUBECONFIG=$KUBECONFIG_PATH"
+    echo ">>> KUBECONFIG is set for this session (~/.bashrc updated for new shells)"
+    if [[ "${K8S_SOAR_ENABLE_SOAR:-0}" == "1" ]]; then
+      echo ">>> K8S_SOAR_ENABLE_SOAR=1 is set for this session"
+    fi
+    echo ">>> Other terminals: source ~/.bashrc"
   fi
 fi
 

@@ -12,7 +12,7 @@ apiserver_advertise_address: "{{PRESETUP_HOST_IP}}"
 # Where Ansible fetches kubeconfig on the operator machine
 kubeconfig_dest: "{{ lookup('env', 'HOME') }}/.kube/config-{{ cluster_name }}"
 
-# Optional: patch localhost kubeconfig and print export hint
+# Optional: patch kubeconfig IP and add KUBECONFIG (+ SOAR env) to ~/.bashrc / ~/.zshrc
 configure_localhost: true
 
 # Wipe existing k3s/kubeadm state before install (destructive)

@@ -194,6 +194,13 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Ensure .kube directory exists
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: "0700"
+      when: configure_localhost | bool
+
     - name: Patch API server address in fetched kubeconfig
       ansible.builtin.replace:
         path: "{{ kubeconfig_dest }}"
@@ -201,9 +208,56 @@
         replace: "{{ apiserver_advertise_address }}:6443"
       when: configure_localhost | bool
 
-    - name: Print KUBECONFIG export hint
+    - name: Add KUBECONFIG to .bashrc
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.bashrc"
+        line: "export KUBECONFIG={{ kubeconfig_dest }}"
+        create: true
+        mode: "0644"
+      when: configure_localhost | bool
+
+    - name: Check if .zshrc exists
+      ansible.builtin.stat:
+        path: "{{ lookup('env', 'HOME') }}/.zshrc"
+      register: zshrc_stat
+      when: configure_localhost | bool
+
+    - name: Add KUBECONFIG to .zshrc
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.zshrc"
+        line: "export KUBECONFIG={{ kubeconfig_dest }}"
+        mode: "0644"
+      when:
+        - configure_localhost | bool
+        - zshrc_stat.stat.exists | default(false)
+
+    - name: Add K8S_SOAR_ENABLE_SOAR to .bashrc
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.bashrc"
+        line: "export K8S_SOAR_ENABLE_SOAR=1"
+        create: true
+        mode: "0644"
+      when:
+        - configure_localhost | bool
+        - enable_soar | bool
+
+    - name: Add K8S_SOAR_ENABLE_SOAR to .zshrc
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.zshrc"
+        line: "export K8S_SOAR_ENABLE_SOAR=1"
+        mode: "0644"
+      when:
+        - configure_localhost | bool
+        - enable_soar | bool
+        - zshrc_stat.stat.exists | default(false)
+
+    - name: Print shell configuration hint
       ansible.builtin.debug:
-        msg: "export KUBECONFIG={{ kubeconfig_dest }}"
+        msg: >-
+          KUBECONFIG={{ kubeconfig_dest }} added to ~/.bashrc
+          {{- ' and ~/.zshrc' if (zshrc_stat.stat.exists | default(false)) else '' }}.
+          Run `source ~/.bashrc` in other open terminals.
+          {{- ' K8S_SOAR_ENABLE_SOAR=1 added for manual helm/scripts.' if (enable_soar | bool) else '' }}
       when: configure_localhost | bool
 
 - name: Install k8s-soar Helm stack
