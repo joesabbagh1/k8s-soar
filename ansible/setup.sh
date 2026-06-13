@@ -4,13 +4,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+if ! command -v ansible-playbook >/dev/null 2>&1; then
+  echo "ERROR: ansible-playbook not found. Run ./pre-setup.sh first."
+  exit 1
+fi
+
 if [[ ! -f inventory.ini ]]; then
-  echo "ERROR: inventory.ini not found. Copy inventory.example.ini and customize it."
+  echo "ERROR: inventory.ini not found. Run ./pre-setup.sh first."
   exit 1
 fi
 
 if [[ ! -f group_vars/all.yml ]]; then
-  echo "ERROR: group_vars/all.yml not found. Copy group_vars/all.yml.example and customize it."
+  echo "ERROR: group_vars/all.yml not found. Run ./pre-setup.sh first."
   exit 1
 fi
 
@@ -22,7 +27,6 @@ if [[ -f secrets.yml ]]; then
   fi
 fi
 
-# macOS fork safety workaround for Ansible
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY="${OBJC_DISABLE_INITIALIZE_FORK_SAFETY:-YES}"
 
 echo ">>> Bootstrapping kubeadm cluster and k8s-soar stack..."

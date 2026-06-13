@@ -28,11 +28,10 @@
 ## One-command install (bare metal from scratch)
 
 ```bash
-cp ansible/inventory.example.ini ansible/inventory.ini
-cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
-# Edit: master IP, node hosts, cluster_name, SSH key
-
-./ansible/setup.sh
+cd ansible
+chmod +x pre-setup.sh setup.sh
+./pre-setup.sh    # packages + auto IP + config (SOAR on by default)
+./setup.sh
 ```
 
 This automatically provisions the cluster and security stack. **Attack scenarios are not run** — execute those manually when you are ready (see below).
@@ -52,17 +51,17 @@ export KUBECONFIG=~/.kube/config-<cluster_name>
 
 Each scenario folder has a `README.md` with expected alerts and evidence to capture.
 
-## Enable SOAR (optional)
+## Enable SOAR (Detect → Isolate)
 
-Set in `ansible/group_vars/all.yml`:
+SOAR is **enabled by default** when using `./ansible/pre-setup.sh` (`enable_soar: true`).
+
+To disable, set in `group_vars/all.yml`:
 
 ```yaml
-enable_soar: true
+enable_soar: false
 ```
 
-Re-run `./ansible/setup.sh` (or `./scripts/helm-install.sh` with `K8S_SOAR_ENABLE_SOAR=1`).
-
-This enables the in-cluster responder and falcosidekick webhook automatically.
+Then re-run `./setup.sh`.
 
 ## Manual Helm install (kubeadm already done)
 
