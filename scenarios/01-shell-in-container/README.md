@@ -4,14 +4,16 @@
 
 ## Attack
 
-Spawn an interactive shell inside the victim pod (busybox lab workload).
+Spawn an interactive shell inside `security-lab`. The run script verifies `kubectl exec`
+into the victim pod (Tetragon must not block), then starts a one-shot shell pod so Falco
+reliably sees `spawned_process`.
 
 ## Run
 
 ```bash
 ./run.sh
-sleep 5
-kubectl logs -n falco -l app.kubernetes.io/name=falco --since=2m | grep -i k8s-soar
+# or
+./scripts/capture-scenario-evidence.sh 3m 'K8sSoar Shell In Victim Container'
 ```
 
 ## Expected evidence

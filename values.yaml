@@ -14,12 +14,12 @@ lab:
   enabled: false
 
 # ------------------------------------------------------------------------------
-# SOAR — Detect → Isolate response automation
-# Set soar.responder.enabled=true to enable responder + falcosidekick webhook.
+# SOAR — Detect → Isolate response automation (enabled by default)
+# Disable with soar.responder.enabled=false or K8S_SOAR_ENABLE_SOAR=0
 # ------------------------------------------------------------------------------
 soar:
   responder:
-    enabled: false
+    enabled: true
     image: python:3.12-alpine
     port: 8080
   quarantine:
@@ -53,6 +53,9 @@ falco:
   enabled: true
   namespaceOverride: falco
 
+  # Flush JSON alerts immediately (needed for kubectl logs evidence capture).
+  tty: true
+
   collectors:
     docker:
       enabled: false
@@ -73,8 +76,28 @@ falco:
   jsonIncludeTagsProperty: true
   logLevel: info
 
+  # Explicit refs so falcoctl installs plugins required by collectors.*.enabled.
+  # Without these, Falco warns and k8s-soar rules (container + k8s.ns.name) never match.
+  falcoctl:
+    artifact:
+      install:
+        enabled: true
+      follow:
+        enabled: true
+    config:
+      artifact:
+        install:
+          resolveDeps: true
+          refs:
+            - falco-rules:4
+            - ghcr.io/falcosecurity/plugins/plugin/k8smeta:0.3.0
+            - ghcr.io/falcosecurity/plugins/plugin/container:0.2.4
+        follow:
+          refs:
+            - falco-rules:4
+
   falcosidekick:
-    enabled: false
+    enabled: true
     config:
       webhook:
         address: "http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook"

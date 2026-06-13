@@ -87,6 +87,22 @@ if ns="$(pods_running app.kubernetes.io/name=falco falco "$RELEASE_NS")"; then
   else
     warn "Falco logs empty (may still be starting)"
   fi
+  if kubectl logs -n "$falco_ns" -l app.kubernetes.io/name=falco --tail=200 2>/dev/null \
+    | grep -q 'please make sure to install them'; then
+    bad "Falco plugins not installed (k8s-soar rules will not match) — run ./scripts/repair-falco.sh"
+  fi
+  if kubectl get deploy -n "$falco_ns" -l app.kubernetes.io/name=k8s-metacollector >/dev/null 2>&1 \
+    || kubectl get deploy -n "$falco_ns" 2>/dev/null | grep -qi metacollector; then
+    ok "k8s-metacollector deployed"
+  else
+    warn "k8s-metacollector not found (collectors.kubernetes.enabled should be true)"
+  fi
+  if kubectl get deploy -n "$falco_ns" -l app.kubernetes.io/name=falcosidekick >/dev/null 2>&1; then
+    wait_for_pods "$falco_ns" "app.kubernetes.io/name=falcosidekick" 120 || true
+    ok "falcosidekick deployed"
+  else
+    warn "falcosidekick not deployed (SOAR webhook disabled?)"
+  fi
 elif kubectl get ns falco >/dev/null 2>&1 || kubectl get ns "$RELEASE_NS" >/dev/null 2>&1; then
   bad "Falco not running (checked falco and ${RELEASE_NS})"
 else

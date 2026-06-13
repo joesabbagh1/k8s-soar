@@ -18,6 +18,8 @@
   condition: >
     open_read and container and
     k8s.ns.name = "security-lab" and
+    not proc.name startswith runc and
+    not proc.name in (containerd-shim, containerd) and
     (fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount or
      fd.name contains /etc/shadow)
   output: >

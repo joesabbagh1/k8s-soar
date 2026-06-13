@@ -17,7 +17,7 @@
 4. **Tetragon** — kernel-level enforcement policies
 5. **Kyverno** — admission policies-as-code
 6. **security-lab** — isolated namespace for attack scenarios
-7. **SOAR responder** (optional) — Detect → Isolate via falcosidekick webhook
+7. **SOAR responder** — Detect → Isolate via falcosidekick webhook (enabled by default)
 
 ## Prerequisites
 
@@ -52,17 +52,18 @@ source ~/.bashrc
 
 Each scenario folder has a `README.md` with expected alerts and evidence to capture.
 
-## Enable SOAR (Detect → Isolate)
+## SOAR (Detect → Isolate)
 
-SOAR is **enabled by default** when using `./ansible/setup.sh` (`enable_soar: true`).
+SOAR (falcosidekick webhook + in-cluster responder) is **enabled by default** in `values.yaml` and via `./ansible/setup.sh` (`enable_soar: true`).
 
-To disable, set in `group_vars/all.yml`:
+To disable:
 
 ```yaml
+# ansible/group_vars/all.yml
 enable_soar: false
 ```
 
-Then re-run `./setup.sh`.
+Or for manual Helm only: `K8S_SOAR_ENABLE_SOAR=0 ./scripts/helm-install.sh`
 
 ## Manual Helm install (kubeadm already done)
 
@@ -79,7 +80,7 @@ Then re-run `./setup.sh`.
 | Falco custom rules | `render-helm-values.sh` overlay |
 | Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
 | security-lab namespace + victim app | `scripts/apply-policies-lab.sh` |
-| SOAR responder + webhook | `enable_soar: true` or `K8S_SOAR_ENABLE_SOAR=1` |
+| SOAR responder + webhook | On by default; disable with `enable_soar: false` or `K8S_SOAR_ENABLE_SOAR=0` |
 | Attack scenario execution | **Manual only** — `./scenarios/NN-name/run.sh` when you choose |
 | Kyverno Enforce mode | Optional — policies ship in Audit mode |
 | Inventory / server IPs | One-time manual edit |
