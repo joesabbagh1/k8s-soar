@@ -79,6 +79,10 @@ falco:
 tetragon:
   enabled: true
 
+  # Install TracingPolicy CRDs with Helm (default "operator" can lag after --wait)
+  crds:
+    installMethod: helm
+
   tetragon:
     grpc:
       address: "localhost:54321"
