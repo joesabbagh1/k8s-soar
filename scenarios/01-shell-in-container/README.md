@@ -4,12 +4,14 @@
 
 ## Attack
 
-Spawn an interactive shell inside the victim nginx pod.
+Spawn an interactive shell inside the victim pod (busybox lab workload).
 
 ## Run
 
 ```bash
 ./run.sh
+sleep 5
+kubectl logs -n falco -l app.kubernetes.io/name=falco --since=2m | grep -i k8s-soar
 ```
 
 ## Expected evidence

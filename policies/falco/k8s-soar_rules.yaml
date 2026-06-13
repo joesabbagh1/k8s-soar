@@ -43,8 +43,7 @@
   condition: >
     spawned_process and container and
     k8s.ns.name = "security-lab" and
-    proc.name in (bash, sh) and
-    proc.pname exists and proc.pname in (nginx, pause)
+    proc.name in (bash, sh)
   output: >
     Shell spawned in victim container (k8s-soar scenario 01)
     ns=%k8s.ns.name pod=%k8s.pod.name shell=%proc.name parent=%proc.pname

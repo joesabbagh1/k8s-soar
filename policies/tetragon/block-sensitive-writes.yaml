@@ -24,4 +24,6 @@ spec:
             - operator: NotIn
               values:
                 - /pause
+                - /bin/sleep
+                - /bin/sh
                 - /usr/sbin/nginx

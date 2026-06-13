@@ -20,20 +20,19 @@ spec:
       automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101
+        runAsUser: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: nginx
-          image: nginxinc/nginx-unprivileged:1.25-alpine
-          ports:
-            - containerPort: 8080
+        - name: victim
+          image: busybox:1.36
+          command: ["sleep", "infinity"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
             runAsNonRoot: true
-            runAsUser: 101
+            runAsUser: 1000
           resources:
             requests:
               cpu: 50m
