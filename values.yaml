@@ -54,6 +54,12 @@ falco:
   namespaceOverride: falco
 
   collectors:
+    docker:
+      enabled: false
+    containerd:
+      enabled: false
+    crio:
+      enabled: false
     containerEngine:
       enabled: true
 
