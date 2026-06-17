@@ -4,7 +4,7 @@
 
 ## Attack
 
-Attempt write to `/etc/shadow` from pod `scenario-08-writer` (`scenario=08` label). Tetragon enforcement applies **only** to that pod — not the baseline victim workload.
+From inside a container, attempt to append data to `/etc/shadow`, a sensitive credential store. This simulates an attacker probing for host-level impact or persistence via sensitive filesystem paths.
 
 ## Run
 

@@ -4,7 +4,7 @@
 
 ## Attack
 
-Deploy pod using `:latest` tag without runAsNonRoot.
+Deploy a workload to `security-lab` using an unpinned `:latest` image tag and without a non-root security context — a common misconfiguration that increases supply-chain and privilege-escalation risk.
 
 ## Run
 

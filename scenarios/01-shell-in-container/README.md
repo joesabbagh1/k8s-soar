@@ -4,14 +4,12 @@
 
 ## Attack
 
-Spawn an interactive shell in a **dedicated** pod labeled `scenario=01`. Scenarios do not share workloads — Tetragon enforce policies and SOAR quarantine only affect the scenario pod, not the baseline victim deployment.
+An adversary with access to a running container spawns an interactive shell (`sh`) inside a workload in `security-lab`. This represents post-exploitation activity: establishing a command interface to explore the environment, run tools, or prepare further actions.
 
 ## Run
 
 ```bash
 ./run.sh
-# reset leftover scenario pods / quarantine labels:
-../../scripts/reset-scenario-lab.sh
 ```
 
 ## Expected evidence
@@ -22,7 +20,7 @@ Spawn an interactive shell in a **dedicated** pod labeled `scenario=01`. Scenari
 | falcosidekick | Webhook POST success (no `422 missing pod identity`) |
 | SOAR responder | `quarantined pod security-lab/scenario-01-shell` in logs |
 | Kyverno | — |
-| Tetragon | — (not in scope for this scenario) |
+| Tetragon | — |
 
 ## Capture
 

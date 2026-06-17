@@ -4,14 +4,18 @@
 
 ## Attack
 
-Read the mounted service account token from dedicated pod `scenario-03-token` (`scenario=03`).
+From inside a compromised pod, read the Kubernetes service account token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`. Stolen tokens can be used to authenticate to the API server and move laterally within the cluster.
 
 ## Run
 
 ```bash
 ./run.sh
-# or
-./scripts/capture-scenario-evidence.sh 3m 'K8sSoar Sensitive Credential Access'
+```
+
+## Capture
+
+```bash
+../../scripts/capture-scenario-evidence.sh 3m 'K8sSoar Sensitive Credential Access'
 ```
 
 ## Expected evidence

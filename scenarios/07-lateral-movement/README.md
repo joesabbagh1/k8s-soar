@@ -4,7 +4,7 @@
 
 ## Attack
 
-Attempt pod-to-pod traffic between **dedicated** attacker and peer pods (both `scenario=07`), blocked by default-deny NetworkPolicy.
+A compromised pod in `security-lab` attempts to connect to another pod in the same namespace over the network, simulating lateral movement after initial access. Default-deny network policy should block the connection.
 
 ## Run
 

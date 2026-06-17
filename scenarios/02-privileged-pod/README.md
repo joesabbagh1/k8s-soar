@@ -4,7 +4,7 @@
 
 ## Attack
 
-Attempt to deploy a privileged pod with hostPath mount in security-lab.
+Submit a pod manifest that requests privileged mode and mounts the host root filesystem via `hostPath`, a common pattern used to escape the container boundary and interact with the node.
 
 ## Run
 
