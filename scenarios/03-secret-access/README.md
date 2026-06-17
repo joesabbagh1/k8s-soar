@@ -4,7 +4,7 @@
 
 ## Attack
 
-Read the mounted service account token from the victim pod.
+Read the mounted service account token from dedicated pod `scenario-03-token` (`scenario=03`).
 
 ## Run
 

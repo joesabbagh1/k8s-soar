@@ -6,11 +6,8 @@ metadata:
     k8s-soar.io/scenario: "08-sensitive-host-write"
 spec:
   podSelector:
-    matchExpressions:
-      - key: k8s:io.kubernetes.pod.namespace
-        operator: In
-        values:
-          - security-lab
+    matchLabels:
+      scenario: "08"
   kprobes:
     - call: "security_file_open"
       syscall: false

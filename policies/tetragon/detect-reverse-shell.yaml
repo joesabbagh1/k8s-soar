@@ -6,11 +6,8 @@ metadata:
     k8s-soar.io/scenario: "04-reverse-shell"
 spec:
   podSelector:
-    matchExpressions:
-      - key: k8s:io.kubernetes.pod.namespace
-        operator: In
-        values:
-          - security-lab
+    matchLabels:
+      scenario: "04"
   kprobes:
     - call: "tcp_connect"
       syscall: false

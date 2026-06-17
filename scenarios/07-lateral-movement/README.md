@@ -4,7 +4,7 @@
 
 ## Attack
 
-Attempt curl from victim pod to another pod in security-lab (blocked by default-deny).
+Attempt pod-to-pod traffic between **dedicated** attacker and peer pods (both `scenario=07`), blocked by default-deny NetworkPolicy.
 
 ## Run
 

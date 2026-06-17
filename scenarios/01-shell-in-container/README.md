@@ -4,16 +4,14 @@
 
 ## Attack
 
-Spawn an interactive shell inside `security-lab`. The run script verifies `kubectl exec`
-into the victim pod (Tetragon must not block), then starts a one-shot shell pod so Falco
-reliably sees `spawned_process`.
+Spawn an interactive shell in a **dedicated** pod labeled `scenario=01`. Scenarios do not share workloads — Tetragon enforce policies and SOAR quarantine only affect the scenario pod, not the baseline victim deployment.
 
 ## Run
 
 ```bash
 ./run.sh
-# or
-./scripts/capture-scenario-evidence.sh 3m 'K8sSoar Shell In Victim Container'
+# reset leftover scenario pods / quarantine labels:
+../../scripts/reset-scenario-lab.sh
 ```
 
 ## Expected evidence
@@ -22,12 +20,12 @@ reliably sees `spawned_process`.
 |------|----------|
 | Falco | `K8sSoar Shell In Victim Container` |
 | falcosidekick | Webhook POST success (no `422 missing pod identity`) |
-| SOAR responder | `quarantined pod security-lab/...` in logs; pod label `security.quarantine=true` |
+| SOAR responder | `quarantined pod security-lab/scenario-01-shell` in logs |
 | Kyverno | — |
-| Tetragon | process exec event in security-lab |
+| Tetragon | — (not in scope for this scenario) |
 
 ## Capture
 
 ```bash
-kubectl logs -n falco -l app.kubernetes.io/name=falco --since=2m | grep -i shell
+../../scripts/capture-scenario-evidence.sh 3m 'K8sSoar Shell In Victim Container'
 ```

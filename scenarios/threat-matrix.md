@@ -17,7 +17,9 @@ Maps core thesis scenarios to MITRE ATT&CK (Containers), tooling, and evidence.
 
 - Kyverno policies ship in **Audit** mode. Flip to `Enforce` after baseline validation.
 - Falco custom rules target `security-lab` namespace only to limit noise.
+- **Tetragon enforce policies** use pod label `scenario: "NN"` so scenarios do not affect each other (e.g. scenario 08 blocks writes only on `scenario=08` pods).
 - Quarantine label `security.quarantine=true` triggers network isolation (SOAR Phase 5).
+- Run `./scripts/reset-scenario-lab.sh` to delete scenario pods and clear victim quarantine between demos.
 
 ## Scenario runbooks
 
