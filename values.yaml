@@ -14,14 +14,9 @@ lab:
   enabled: false
 
 # ------------------------------------------------------------------------------
-# SOAR — Detect → Isolate response automation (enabled by default)
-# Disable with soar.responder.enabled=false or K8S_SOAR_ENABLE_SOAR=0
+# SOAR — Detect → Isolate response automation
 # ------------------------------------------------------------------------------
 soar:
-  responder:
-    enabled: true
-    image: python:3.12-alpine
-    port: 8080
   quarantine:
     labelKey: security.quarantine
     labelValue: "true"
@@ -100,7 +95,8 @@ falco:
     enabled: true
     config:
       webhook:
-        address: "http://k8s-soar-responder.k8s-soar.svc.cluster.local:8080/webhook"
+        # Update this address after configuring the Shuffle webhook
+        address: "http://shuffle-webhook.shuffle.svc.cluster.local:5001/api/v1/hooks/falco"
         minimumpriority: "warning"
 
   resources:

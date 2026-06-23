@@ -36,35 +36,20 @@ chmod +x setup.sh
 
 This automatically provisions the cluster and security stack. **Attack scenarios are not run** — execute those manually when you are ready (see below).
 
-## Run attack scenarios (manual — one at a time)
+## Run attack scenarios (Separated Repository)
 
-After install, new terminals work automatically. In the same terminal where you ran `./setup.sh`, run once:
+Attack scenarios are now housed in a separate repository to maintain `k8s-soar` as a clean, deployable security solution. 
+Please refer to the `k8s-soar-scenarios` repository to run simulations and trigger the security stack.
 
+## SOAR (Shuffle)
+
+SOAR capabilities are driven by **Shuffle (shuffler.io)**. `falcosidekick` forwards alerts directly to a Shuffle webhook, which executes visual playbooks to respond to threats (e.g. quarantining pods).
+
+To deploy the Shuffle backend, run the helper script:
 ```bash
-source ~/.bashrc
+./scripts/deploy-shuffle.sh
 ```
-
-```bash
-# Pick a scenario — do not run all at once unless you intend to
-./scenarios/01-shell-in-container/run.sh
-./scenarios/02-privileged-pod/run.sh
-# ... see scenarios/threat-matrix.md
-```
-
-Each scenario folder has a `README.md` with expected alerts and evidence to capture.
-
-## SOAR (Detect → Isolate)
-
-SOAR (falcosidekick webhook + in-cluster responder) is **enabled by default** in `values.yaml` and via `./ansible/setup.sh` (`enable_soar: true`).
-
-To disable:
-
-```yaml
-# ansible/group_vars/all.yml
-enable_soar: false
-```
-
-Or for manual Helm only: `K8S_SOAR_ENABLE_SOAR=0 ./scripts/helm-install.sh`
+After deployment, configure your Shuffle webhook and update `values.yaml` under `falcosidekick.config.webhook.address` to point to it.
 
 ## Observability (Grafana + Prometheus + Loki)
 
@@ -112,7 +97,7 @@ Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/helm-install.sh`
 | SOAR responder + webhook | On by default; disable with `enable_soar: false` or `K8S_SOAR_ENABLE_SOAR=0` |
 | Grafana dashboards + Loki alerts | On by default; `./scripts/port-forward-grafana.sh` |
 | Observability stack | On by default; disable with `observability.enabled: false` or `K8S_SOAR_ENABLE_OBSERVABILITY=0` |
-| Attack scenario execution | **Manual only** — `./scenarios/NN-name/run.sh` when you choose |
+| Attack scenario execution | **k8s-soar-scenarios repository** |
 | Kyverno Enforce mode | Optional — policies ship in Audit mode |
 | Inventory / server IPs | One-time manual edit |
 
