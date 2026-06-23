@@ -155,6 +155,39 @@ if kubectl get deploy -n "$RELEASE_NS" k8s-soar-responder >/dev/null 2>&1; then
   fi
 fi
 
+# --- Observability (Grafana + Prometheus + Loki) ---
+MONITORING_NS="${K8S_SOAR_MONITORING_NS:-monitoring}"
+KPS_RELEASE="${K8S_SOAR_KPS_RELEASE:-kube-prometheus-stack}"
+if kubectl get ns "$MONITORING_NS" >/dev/null 2>&1; then
+  if kubectl get statefulset,deployment -n "$MONITORING_NS" -l app.kubernetes.io/name=loki --no-headers 2>/dev/null | grep -q .; then
+    wait_for_pods "$MONITORING_NS" app.kubernetes.io/name=loki 300 || true
+    ok "Loki running in ${MONITORING_NS}"
+  else
+    warn "Loki not found in ${MONITORING_NS} (observability disabled?)"
+  fi
+  if kubectl get daemonset -n "$MONITORING_NS" -l app.kubernetes.io/name=promtail >/dev/null 2>&1; then
+    wait_for_pods "$MONITORING_NS" app.kubernetes.io/name=promtail 180 || true
+    ok "Promtail running"
+  fi
+  if kubectl get deploy -n "$MONITORING_NS" "${KPS_RELEASE}-grafana" >/dev/null 2>&1; then
+    wait_for_pods "$MONITORING_NS" app.kubernetes.io/name=grafana 300 || true
+    ok "Grafana running (${KPS_RELEASE}-grafana)"
+  else
+    warn "Grafana not deployed in ${MONITORING_NS}"
+  fi
+  if kubectl get prometheus -n "$MONITORING_NS" "${KPS_RELEASE}-kube-prometheus-prometheus" >/dev/null 2>&1 \
+    || kubectl get deploy -n "$MONITORING_NS" -l app.kubernetes.io/name=prometheus >/dev/null 2>&1; then
+    ok "Prometheus operator stack present"
+  fi
+  if [[ -n "$falco_ns" ]] && kubectl get servicemonitor -n "$falco_ns" -l app.kubernetes.io/name=falco >/dev/null 2>&1; then
+    ok "Falco ServiceMonitor configured"
+  elif [[ -n "$falco_ns" ]]; then
+    warn "Falco ServiceMonitor missing (observability.metrics disabled?)"
+  fi
+else
+  warn "monitoring namespace missing (observability disabled?)"
+fi
+
 # --- nodes ready ---
 ready=$(kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready ' || true)
 total=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')

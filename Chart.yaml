@@ -3,8 +3,9 @@ name: k8s-soar
 description: >
   Kubernetes Security Orchestration, Automation & Response (SOAR) stack.
   Deploys Cilium (eBPF CNI and network security), Falco (syscall threat detection),
-  Tetragon (eBPF kernel enforcement), and Kyverno (admission policy engine) to
-  bootstrap a real-time threat detection and response environment.
+  Tetragon (eBPF kernel enforcement), Kyverno (admission policy engine), and
+  Grafana/Prometheus/Loki observability to bootstrap a real-time threat detection,
+  response, and visualization environment.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
@@ -16,6 +17,9 @@ keywords:
   - tetragon
   - kyverno
   - soar
+  - grafana
+  - prometheus
+  - loki
   - ebpf
   - threat-detection
 
@@ -43,3 +47,18 @@ dependencies:
     version: "3.x.x"
     repository: "https://kyverno.github.io/kyverno/"
     condition: kyverno.enabled
+
+  - name: kube-prometheus-stack
+    version: "86.x.x"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: observability.enabled
+
+  - name: loki
+    version: "6.x.x"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: observability.enabled
+
+  - name: promtail
+    version: "6.x.x"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: observability.enabled

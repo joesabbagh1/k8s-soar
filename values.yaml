@@ -1,6 +1,6 @@
 # ==============================================================================
 # k8s-soar — Values
-# Cilium + Falco + Tetragon + Kyverno security stack
+# Cilium + Falco + Tetragon + Kyverno + Observability security stack
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -163,3 +163,57 @@ kyverno:
     resources:
       limits:
         memory: 128Mi
+
+# ------------------------------------------------------------------------------
+# Observability — Grafana + Prometheus + Loki (enabled by default)
+# Visualize Falco findings, stack metrics, and Grafana/Loki alerts.
+# Disable with observability.enabled=false or K8S_SOAR_ENABLE_OBSERVABILITY=0
+# ------------------------------------------------------------------------------
+observability:
+  enabled: true
+  namespace: monitoring
+
+  loki:
+    deploymentMode: SingleBinary
+    useTestSchema: true
+    auth_enabled: false
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    singleBinary:
+      replicas: 1
+    read:
+      replicas: 0
+    write:
+      replicas: 0
+    backend:
+      replicas: 0
+
+  promtail:
+    enabled: true
+
+  kubePrometheusStack:
+    releaseName: kube-prometheus-stack
+    grafana:
+      adminPassword: k8s-soar
+      additionalDataSources:
+        - name: Loki
+          type: loki
+          uid: loki
+          access: proxy
+          url: http://loki.monitoring.svc.cluster.local:3100
+          isDefault: false
+          jsonData:
+            maxLines: 1000
+    prometheus:
+      prometheusSpec:
+        retention: 7d
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            memory: 1Gi
+    alertmanager:
+      enabled: true

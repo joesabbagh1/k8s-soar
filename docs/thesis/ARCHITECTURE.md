@@ -12,6 +12,7 @@ k8s-soar delivers a layered security stack on bare-metal Kubernetes:
 | Enforce | Tetragon | Kernel TracingPolicies — process/network actions |
 | Prevent | Kyverno | Admission policies-as-code |
 | Respond | falcosidekick + SOAR responder | Detect → Isolate webhook workflow |
+| Observe | Grafana + Prometheus + Loki | Findings dashboards, metrics, Loki alerts |
 
 ## Install flow
 
@@ -42,4 +43,19 @@ sequenceDiagram
   Sidekick->>Responder: POST /webhook
   Responder->>Pod: label security.quarantine=true
   CNP->>Pod: deny ingress/egress
+```
+
+## Observability flow
+
+```mermaid
+flowchart LR
+  Falco --> Sidekick[falcosidekick]
+  Sidekick --> Loki
+  Sidekick --> Responder[SOAR responder]
+  Promtail --> Loki
+  Falco --> Promtail
+  Falco -->|metrics| Prometheus
+  Sidekick -->|metrics| Prometheus
+  Loki --> Grafana
+  Prometheus --> Grafana
 ```

@@ -217,6 +217,9 @@
           {% if enable_soar | bool %}
           export K8S_SOAR_ENABLE_SOAR=1
           {% endif %}
+          {% if enable_observability | default(true) | bool %}
+          export K8S_SOAR_ENABLE_OBSERVABILITY=1
+          {% endif %}
       when: configure_localhost | bool
 
     - name: Source cluster env file from .bashrc
@@ -301,6 +304,8 @@
         helm repo add falcosecurity https://falcosecurity.github.io/charts 2>/dev/null || true
         helm repo add cilium https://helm.cilium.io/ 2>/dev/null || true
         helm repo add kyverno https://kyverno.github.io/kyverno/ 2>/dev/null || true
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
+        helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
       changed_when: false
 
     - name: Update Helm repositories
@@ -316,6 +321,7 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
         K8S_SOAR_ENABLE_SOAR: "{{ enable_soar | bool | ternary('1', '0') }}"
+        K8S_SOAR_ENABLE_OBSERVABILITY: "{{ enable_observability | default(true) | bool | ternary('1', '0') }}"
       args:
         chdir: "{{ k8s_soar_chart_path }}"
 

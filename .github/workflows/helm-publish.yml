@@ -49,6 +49,8 @@ jobs:
           helm repo add falcosecurity https://falcosecurity.github.io/charts
           helm repo add cilium         https://helm.cilium.io/
           helm repo add kyverno        https://kyverno.github.io/kyverno/
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana        https://grafana.github.io/helm-charts
           helm repo update
 
       - name: Build chart dependencies
@@ -64,6 +66,8 @@ jobs:
           helm template k8s-soar . -f .generated/k8s-soar-values.yaml --debug > /dev/null
           helm template cilium charts/cilium-*.tgz -f .generated/cilium-values.yaml > /dev/null
           helm template falco charts/falco-*.tgz -f .generated/falco-values.yaml > /dev/null
+          helm template loki charts/loki-*.tgz -f .generated/loki-values.yaml > /dev/null
+          helm template kube-prometheus-stack charts/kube-prometheus-stack-*.tgz -f .generated/kube-prometheus-stack-values.yaml > /dev/null
 
       - name: Validate policies kustomize
         run: kubectl kustomize policies/ > /dev/null
@@ -96,6 +100,8 @@ jobs:
           helm repo add falcosecurity https://falcosecurity.github.io/charts
           helm repo add cilium         https://helm.cilium.io/
           helm repo add kyverno        https://kyverno.github.io/kyverno/
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana        https://grafana.github.io/helm-charts
           helm repo update
 
       - name: Build chart dependencies

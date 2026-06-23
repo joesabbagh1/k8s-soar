@@ -18,6 +18,7 @@
 5. **Kyverno** — admission policies-as-code
 6. **security-lab** — isolated namespace for attack scenarios
 7. **SOAR responder** — Detect → Isolate via falcosidekick webhook (enabled by default)
+8. **Observability** — Grafana + Prometheus + Loki for findings dashboards and alerts (enabled by default)
 
 ## Prerequisites
 
@@ -65,6 +66,33 @@ enable_soar: false
 
 Or for manual Helm only: `K8S_SOAR_ENABLE_SOAR=0 ./scripts/helm-install.sh`
 
+## Observability (Grafana + Prometheus + Loki)
+
+The observability stack is **enabled by default** so you can visualize Falco findings, explore alert history, and configure Grafana alerts.
+
+| Component | Role |
+|-----------|------|
+| **Prometheus** | Scrapes Falco / falcosidekick metrics (ServiceMonitors) |
+| **Loki** | Stores Falco JSON alerts (via falcosidekick + Promtail pod logs) |
+| **Grafana** | `k8s-soar — Falco Findings` dashboard + provisioned Loki alert |
+
+```bash
+./scripts/port-forward-grafana.sh
+# http://127.0.0.1:3000 — user admin, password k8s-soar (change in values.yaml)
+```
+
+**Do you need Loki?** Prometheus gives you rates and counters; **Loki is what makes full finding text searchable** in Grafana (rule name, pod, namespace, output message). Promtail also captures responder/sidekick logs for SOAR correlation.
+
+To disable observability:
+
+```yaml
+# values.yaml
+observability:
+  enabled: false
+```
+
+Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/helm-install.sh`
+
 ## Manual Helm install (kubeadm already done)
 
 ```bash
@@ -77,10 +105,13 @@ Or for manual Helm only: `K8S_SOAR_ENABLE_SOAR=0 ./scripts/helm-install.sh`
 |------|----------------|
 | OS + kubeadm cluster | Ansible |
 | Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`scripts/helm-install.sh`) |
+| Grafana / Prometheus / Loki | Split Helm releases (`monitoring` namespace) |
 | Falco custom rules | `render-helm-values.sh` overlay |
 | Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
 | security-lab namespace + victim app | `scripts/apply-policies-lab.sh` |
 | SOAR responder + webhook | On by default; disable with `enable_soar: false` or `K8S_SOAR_ENABLE_SOAR=0` |
+| Grafana dashboards + Loki alerts | On by default; `./scripts/port-forward-grafana.sh` |
+| Observability stack | On by default; disable with `observability.enabled: false` or `K8S_SOAR_ENABLE_OBSERVABILITY=0` |
 | Attack scenario execution | **Manual only** — `./scenarios/NN-name/run.sh` when you choose |
 | Kyverno Enforce mode | Optional — policies ship in Audit mode |
 | Inventory / server IPs | One-time manual edit |
@@ -99,6 +130,7 @@ kubectl get ns security-lab
 
 - [Ansible bootstrap](./ansible/README.md)
 - [Architecture](./docs/thesis/ARCHITECTURE.md)
+- [Observability](./docs/OBSERVABILITY.md)
 - [Threat matrix](./scenarios/threat-matrix.md)
 - [SOAR limitations](./docs/thesis/SOAR-LIMITATIONS.md)
 

@@ -28,6 +28,12 @@ Components installed:
     Namespace : {{ .Release.Namespace }}
     Webhook   : http://k8s-soar-responder.{{ .Release.Namespace }}.svc:{{ .Values.soar.responder.port }}/webhook
 {{- end }}
+{{- if .Values.observability.enabled }}
+  ✓ Observability (Grafana + Prometheus + Loki)
+    Namespace : {{ .Values.observability.namespace | default "monitoring" }}
+    Grafana   : ./scripts/port-forward-grafana.sh  (admin / see values.yaml)
+    Dashboard : k8s-soar — Falco Findings
+{{- end }}
 
 ─────────────────────────────────────────────
 Verify the stack is running:
