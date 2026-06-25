@@ -488,10 +488,7 @@
         --set opensearch.enabled=true
         --set worker.replicas=1
         --set apps.enabled=true
-        --set apps.shuffleAi.enabled=true
-        --set apps.shuffleAi.name=shuffle-ai
-        --set apps.shuffleAi.version=1.1.0
-        --set apps.shuffleAi.replicaCount=0
+        --set worker.manageAppDeployments=false
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
