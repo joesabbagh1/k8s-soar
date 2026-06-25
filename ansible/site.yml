@@ -373,7 +373,8 @@
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
     - name: Set local-path as default StorageClass
-      ansible.builtin.command: kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+      ansible.builtin.command: >
+        kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
     - name: Wait for nodes after Cilium
