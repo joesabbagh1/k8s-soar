@@ -42,4 +42,9 @@ wait_api_resource clusterpolicies kyverno.io
 wait_api_resource ciliumnetworkpolicies cilium.io
 wait_api_resource tracingpolicies cilium.io
 
+echo ">>> Waiting for Kyverno admission controller to be ready..."
+kubectl wait --for=condition=available deployment -n kyverno -l app.kubernetes.io/component=admission-controller --timeout="${TIMEOUT}s" || true
+# Additional sleep to ensure endpoints are fully propagated to the apiserver
+sleep 10
+
 echo ">>> Policy CRDs are ready."
