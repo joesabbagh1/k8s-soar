@@ -367,6 +367,15 @@
         KUBECONFIG: "{{ kubeconfig_dest }}"
       when: helm_values.cilium.enabled | default(false) | bool
 
+    - name: Install local-path-provisioner (Bare-Metal StorageClass)
+      ansible.builtin.command: kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.30/deploy/local-path-storage.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+
+    - name: Set local-path as default StorageClass
+      ansible.builtin.command: kubectl patch storageclass local-path -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
     - name: Wait for nodes after Cilium
       ansible.builtin.command: kubectl wait --for=condition=Ready nodes --all --timeout=600s
       environment:
