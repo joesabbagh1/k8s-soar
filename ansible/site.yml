@@ -481,6 +481,21 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
+    - name: Generate a strong random password for Shuffle admin
+      ansible.builtin.set_fact:
+        shuffle_admin_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=16') }}"
+
+    - name: Store Shuffle admin credentials in a Kubernetes Secret (Pre-creation to avoid Helm errors)
+      ansible.builtin.shell: >
+        kubectl create namespace shuffle --dry-run=client -o yaml | kubectl apply -f -;
+        kubectl create secret generic shuffle-admin-auth
+        -n shuffle
+        --from-literal=username='admin@k8s-soar.local'
+        --from-literal=password='{{ shuffle_admin_password }}'
+        --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+
     - name: Install Shuffle
       ansible.builtin.command: >
         helm upgrade --install shuffle oci://ghcr.io/shuffle/charts/shuffle
@@ -489,6 +504,10 @@
         --set worker.replicas=1
         --set apps.enabled=true
         --set worker.manageAppDeployments=false
+        --set backend.extraEnvVars[0].name=SHUFFLE_DEFAULT_USERNAME
+        --set backend.extraEnvVars[0].value=admin@k8s-soar.local
+        --set backend.extraEnvVars[1].name=SHUFFLE_DEFAULT_PASSWORD
+        --set backend.extraEnvVars[1].value='{{ shuffle_admin_password }}'
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
@@ -513,20 +532,6 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
       when: helm_values.observability.enabled | default(false) | bool
-
-    - name: Generate a strong random password for Shuffle admin
-      ansible.builtin.set_fact:
-        shuffle_admin_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=16') }}"
-
-    - name: Store Shuffle admin credentials in a Kubernetes Secret
-      ansible.builtin.shell: >
-        kubectl create secret generic shuffle-admin-auth
-        -n shuffle
-        --from-literal=username='admin@k8s-soar.local'
-        --from-literal=password='{{ shuffle_admin_password }}'
-        --dry-run=client -o yaml | kubectl apply -f -
-      environment:
-        KUBECONFIG: "{{ kubeconfig_dest }}"
 
     - name: Auto-setup Shuffle Playbooks (Background port-forward)
       ansible.builtin.shell: |

@@ -44,20 +44,19 @@ def wait_for_shuffle():
     print(">>> Error: Timed out waiting for Shuffle API.")
     sys.exit(1)
 
-def register_and_login(password):
-    print(">>> Attempting to register admin user...")
-    payload = {"username": USERNAME, "password": password}
-    res = make_request("/register", payload)
-    if not res:
-        res = make_request("/setuppassword", payload)
-        
+def login(password):
     print(">>> Attempting to login...")
-    login_res = make_request("/login", payload)
-    if not login_res or not login_res.get("success"):
-        print(">>> Failed to login. Shuffle might already be configured.")
-        sys.exit(0)
+    payload = {"username": USERNAME, "password": password}
+    
+    # Retry login in case the backend is still initializing the user
+    for _ in range(5):
+        login_res = make_request("/login", payload)
+        if login_res and login_res.get("success"):
+            return login_res.get("token") or login_res.get("access_token")
+        time.sleep(5)
         
-    return login_res.get("token") or login_res.get("access_token")
+    print(">>> Failed to login. User may not be initialized yet.")
+    sys.exit(0)
 
 def import_playbooks(token, playbooks_dir):
     playbook_files = glob.glob(os.path.join(playbooks_dir, "*.json"))
@@ -102,7 +101,7 @@ def main():
     playbooks_dir = os.path.join(script_dir, "..", "playbooks")
     
     wait_for_shuffle()
-    token = register_and_login(password)
+    token = login(password)
     if not token:
         print(">>> Could not retrieve auth token. Manual Shuffle setup required.")
         sys.exit(0)
