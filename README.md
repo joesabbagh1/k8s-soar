@@ -59,15 +59,25 @@ This automatically provisions the cluster and security stack. **Attack scenarios
 Attack scenarios are now housed in a separate repository to maintain `k8s-soar` as a clean, deployable security solution. 
 Please refer to the `k8s-soar-scenarios` repository to run simulations and trigger the security stack.
 
-## SOAR (Shuffle)
+## Post-Install: Link Shuffle SOAR
 
-SOAR capabilities are driven by **Shuffle (shuffler.io)**. `falcosidekick` forwards alerts directly to a Shuffle webhook, which executes visual playbooks to respond to threats (e.g. quarantining pods).
+Shuffle is automatically installed alongside the security stack. To link it to Falco:
 
-To deploy the Shuffle backend, run the helper script:
-```bash
-./scripts/deploy-shuffle.sh
-```
-After deployment, configure your Shuffle webhook and update `values.yaml` under `falcosidekick.config.webhook.address` to point to it.
+1. **Access Shuffle UI:**
+   ```bash
+   kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000
+   ```
+2. **Setup Workflow:**
+   - Open `http://localhost:3001` and create an admin account.
+   - Import the playbook located at `playbooks/quarantine.json`.
+3. **Get Webhook URI:**
+   - Click the "Falco Webhook" node on the canvas.
+   - Click the **Start** button on the node and copy the generated Webhook URI.
+4. **Link the Stack:**
+   Run the helper script to inject the webhook into Falco:
+   ```bash
+   ./scripts/link-shuffle.sh <COPIED_WEBHOOK_URI>
+   ```
 
 ## Observability (Grafana + Prometheus + Loki)
 

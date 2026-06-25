@@ -57,11 +57,12 @@ helm repo add falcosecurity https://falcosecurity.github.io/charts >/dev/null 2>
 helm repo add kyverno https://kyverno.github.io/kyverno/ >/dev/null 2>&1 || true
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
 helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+helm repo add shuffle https://frikky.github.io/Shuffle >/dev/null 2>&1 || true
 helm repo update
 
 helm dependency build .
 
-helm_wait=(--wait --timeout "$HELM_WAIT_TIMEOUT")
+helm_wait=()
 total_steps=6
 if observability_enabled; then
   total_steps=10
@@ -165,6 +166,34 @@ echo ">>> [${policies_step}/${total_steps}] Policies and security-lab (kubectl)"
 "${SCRIPT_DIR}/wait-for-policy-crds.sh"
 "${SCRIPT_DIR}/apply-policies-lab.sh"
 
+echo ">>> [Shuffle] Installing Shuffle SOAR..."
+helm upgrade --install shuffle shuffle/shuffle \
+  --namespace shuffle \
+  --create-namespace \
+  --set opensearch.enabled=true \
+  --set worker.replicas=1
+
+wait_for_all_pods() {
+  echo ">>> Waiting for all pods to become Ready (this may take a few minutes as images are pulled)..."
+  local timeout=900
+  local elapsed=0
+  while [ $elapsed -lt $timeout ]; do
+    local not_ready
+    not_ready=$(kubectl get pods -A --no-headers | awk '{if ($4 != "Running" && $4 != "Completed") print $1"/"$2" ("$4")"}')
+    if [ -z "$not_ready" ]; then
+      echo ">>> All pods are Ready!"
+      return 0
+    fi
+    echo ">>> Still waiting on pods (elapsed: ${elapsed}s):"
+    echo "$not_ready" | sed 's/^/    /'
+    sleep 10
+    elapsed=$((elapsed + 10))
+  done
+  echo ">>> Timeout waiting for pods."
+}
+
+wait_for_all_pods
+
 if observability_enabled; then
   echo ">>> [${total_steps}/${total_steps}] Reconcile Falco metrics/Loki wiring"
   helm upgrade falco "${ROOT_DIR}/charts/falco-${FALCO_VER}.tgz" \
@@ -175,6 +204,15 @@ if observability_enabled; then
 fi
 
 echo ">>> k8s-soar installed (split Helm releases + policies + lab)"
+echo ""
+echo ">>> ==========================================================================="
+echo ">>> NEXT STEPS: LINK SHUFFLE WEBHOOK"
+echo ">>> 1. Access Shuffle UI: kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000"
+echo ">>> 2. Open http://localhost:3001, create an admin account, and Import the playbook from playbooks/quarantine.json"
+echo ">>> 3. Click the Webhook node, start it, and copy the Webhook URI."
+echo ">>> 4. Link Falco to Shuffle by running: ./scripts/link-shuffle.sh <WEBHOOK_URI>"
+echo ">>> ==========================================================================="
+echo ""
 if observability_enabled; then
   echo ">>> Grafana: ./scripts/port-forward-grafana.sh  (admin / k8s-soar)"
 fi
