@@ -333,7 +333,7 @@
 
     - name: Load rendered Helm values
       ansible.builtin.slurp:
-        src: "{{ k8s_soar_chart_path }}/.generated/helm-values.yaml"
+        src: "{{ k8s_soar_chart_path }}/values.yaml"
       register: slurp_helm_values
 
     - name: Parse rendered values
