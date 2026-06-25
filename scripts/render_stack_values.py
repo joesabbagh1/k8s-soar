@@ -241,6 +241,11 @@ def build_kube_prometheus_stack_values(obs: dict) -> dict:
     )
 
     return {
+        "prometheusOperator": {
+            "admissionWebhooks": {
+                "enabled": False
+            }
+        },
         "grafana": grafana_values,
         "prometheus": deep_merge({"prometheusSpec": prom_spec}, prometheus_cfg),
         "alertmanager": alertmanager_cfg,
