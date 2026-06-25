@@ -306,7 +306,6 @@
         helm repo add kyverno https://kyverno.github.io/kyverno/ 2>/dev/null || true
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
         helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
-        helm repo add shuffle https://frikky.github.io/Shuffle 2>/dev/null || true
       changed_when: false
 
     - name: Update Helm repositories
@@ -474,9 +473,10 @@
 
     - name: Install Shuffle
       ansible.builtin.command: >
-        helm upgrade --install shuffle shuffle/shuffle
+        helm upgrade --install shuffle oci://ghcr.io/shuffle/charts/shuffle
         --namespace shuffle --create-namespace
-        --set opensearch.enabled=true --set worker.replicas=1
+        --set opensearch.enabled=true
+        --set worker.replicas=1
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
