@@ -244,6 +244,9 @@ def build_kube_prometheus_stack_values(obs: dict) -> dict:
         "prometheusOperator": {
             "admissionWebhooks": {
                 "enabled": False
+            },
+            "tls": {
+                "enabled": False
             }
         },
         "grafana": grafana_values,
