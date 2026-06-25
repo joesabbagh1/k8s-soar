@@ -111,6 +111,8 @@ def build_loki_values(obs: dict) -> dict:
         "deploymentMode": loki_cfg.get("deploymentMode", "SingleBinary"),
         "loki": loki_inner,
         "singleBinary": loki_cfg.get("singleBinary") or {"replicas": 1},
+        "chunksCache": {"enabled": False},
+        "resultsCache": {"enabled": False},
         "read": loki_cfg.get("read") or {"replicas": 0},
         "write": loki_cfg.get("write") or {"replicas": 0},
         "backend": loki_cfg.get("backend") or {"replicas": 0},
