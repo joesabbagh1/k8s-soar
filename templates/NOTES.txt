@@ -23,10 +23,10 @@ Components installed:
   ✓ Kyverno (admission policy engine)
     Namespace : kyverno
 {{- end }}
-{{- if .Values.soar.responder.enabled }}
-  ✓ SOAR Responder (Detect → Isolate webhook)
-    Namespace : {{ .Release.Namespace }}
-    Webhook   : http://k8s-soar-responder.{{ .Release.Namespace }}.svc:{{ .Values.soar.responder.port }}/webhook
+{{- if .Values.soar.quarantine }}
+  ✓ SOAR Webhook (Shuffle)
+    Namespace : shuffle
+    Link URL  : ./scripts/link-shuffle.sh
 {{- end }}
 {{- if .Values.observability.enabled }}
   ✓ Observability (Grafana + Prometheus + Loki)

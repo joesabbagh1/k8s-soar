@@ -273,7 +273,6 @@ def main() -> None:
     apply_falco_observability(falco_values, enable_obs)
 
     soar_values = dict(values.get("soar") or {})
-    soar_values.setdefault("responder", {})["enabled"] = enable_soar
 
     parent_values = {
         "policies": values.get("policies", {"enabled": False}),
