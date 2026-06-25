@@ -50,7 +50,7 @@ observability:
 ```
 
 ```bash
-K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/helm-install.sh
+K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/install.sh
 ```
 
 SOAR can stay enabled without observability; falcosidekick is only kept for Loki when observability is on (or for the webhook when SOAR is on).

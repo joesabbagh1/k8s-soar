@@ -1,6 +1,6 @@
 # Policies-as-Code
 
-Kyverno, Tetragon, and quarantine policies are **applied automatically** when you install via `./ansible/setup.sh` or `./scripts/helm-install.sh` (`scripts/apply-policies-lab.sh` runs after Helm).
+Kyverno, Tetragon, and quarantine policies are **applied automatically** when you install via `./ansible/setup.sh` or `./scripts/install.sh` (`scripts/apply-policies-lab.sh` runs after Helm).
 
 Falco rules in `falco/` are loaded via the Helm values overlay (not `kubectl apply`).
 

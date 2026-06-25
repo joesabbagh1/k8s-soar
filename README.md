@@ -42,7 +42,7 @@ Run the pre-flight check script:
 This script will:
 1. Detect existing components.
 2. Auto-generate a `values-brownfield.yaml` file to disable what you already have.
-3. Automatically run `./scripts/helm-install.sh` to seamlessly deploy the missing SOAR stack components on top of your existing cluster.
+3. Automatically run `./scripts/install.sh` to seamlessly deploy the missing SOAR stack components on top of your existing cluster.
 
 ## Install: One-command (Bare-metal from scratch)
 
@@ -99,12 +99,12 @@ observability:
   enabled: false
 ```
 
-Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/helm-install.sh`
+Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/install.sh`
 
 ## Manual Helm install (kubeadm already done)
 
 ```bash
-./scripts/helm-install.sh
+./scripts/install.sh
 ```
 
 ## What is automated vs manual
@@ -112,7 +112,7 @@ Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/helm-install.sh`
 | Step | Automated by |
 |------|----------------|
 | OS + kubeadm cluster | Ansible |
-| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`scripts/helm-install.sh`) |
+| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`scripts/install.sh`) |
 | Grafana / Prometheus / Loki | Split Helm releases (`monitoring` namespace) |
 | Falco custom rules | `render-helm-values.sh` overlay |
 | Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |

@@ -317,7 +317,7 @@
         chdir: "{{ k8s_soar_chart_path }}"
 
     - name: Install k8s-soar stack (split Helm releases)
-      ansible.builtin.command: "{{ k8s_soar_chart_path }}/scripts/helm-install.sh"
+      ansible.builtin.command: "{{ k8s_soar_chart_path }}/scripts/install.sh"
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
         K8S_SOAR_ENABLE_SOAR: "{{ enable_soar | bool | ternary('1', '0') }}"

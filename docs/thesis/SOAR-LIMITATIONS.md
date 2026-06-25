@@ -37,7 +37,7 @@ enable_soar: true
 Then re-run `./ansible/setup.sh`, or:
 
 ```bash
-K8S_SOAR_ENABLE_SOAR=1 ./scripts/helm-install.sh
+K8S_SOAR_ENABLE_SOAR=1 ./scripts/install.sh
 ```
 
 Test isolate manually:

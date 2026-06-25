@@ -29,7 +29,7 @@
 1. Kyverno: Audit → validate scenarios → Enforce
 2. Falco: load k8s-soar rules scoped to security-lab
 3. Tetragon: apply TracingPolicies incrementally
-4. SOAR: set `enable_soar: true` in `ansible/group_vars/all.yml` and re-run setup, or `K8S_SOAR_ENABLE_SOAR=1 ./scripts/helm-install.sh`
+4. SOAR: set `enable_soar: true` in `ansible/group_vars/all.yml` and re-run setup, or `K8S_SOAR_ENABLE_SOAR=1 ./scripts/install.sh`
 
 ## Reproducibility
 
