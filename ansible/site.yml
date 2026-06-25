@@ -306,6 +306,7 @@
         helm repo add kyverno https://kyverno.github.io/kyverno/ 2>/dev/null || true
         helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
         helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
+        helm repo add shuffle https://frikky.github.io/Shuffle 2>/dev/null || true
       changed_when: false
 
     - name: Update Helm repositories
@@ -355,10 +356,6 @@
           {{
             chart_lock.dependencies | items2dict(key_name='name', value_name='version')
           }}
-
-    - name: Add Shuffle Helm repo
-      ansible.builtin.shell: helm repo add shuffle https://frikky.github.io/Shuffle 2>/dev/null || true
-      changed_when: false
 
     - name: Install Cilium
       ansible.builtin.command: >
