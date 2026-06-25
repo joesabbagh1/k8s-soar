@@ -48,6 +48,5 @@ EOF
 echo ">>> Generated override file: values-brownfield.yaml"
 cat "$BROWNFIELD_VALUES"
 echo ""
-echo ">>> To install k8s-soar on this existing cluster, please ensure your"
-echo ">>> helm-install.sh script skips these disabled components, or simply run:"
-echo ">>> ./scripts/helm-install.sh"
+echo ">>> Proceeding with automatic installation of missing components..."
+"${ROOT_DIR}/scripts/helm-install.sh"

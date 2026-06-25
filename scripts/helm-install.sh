@@ -11,6 +11,11 @@ HELM_WAIT_TIMEOUT="${K8S_SOAR_HELM_TIMEOUT:-15m}"
 MONITORING_NS="${K8S_SOAR_MONITORING_NS:-monitoring}"
 KPS_RELEASE="${K8S_SOAR_KPS_RELEASE:-kube-prometheus-stack}"
 
+if ! python3 -c 'import yaml' >/dev/null 2>&1; then
+  echo ">>> Missing python3-yaml. Installing..."
+  sudo apt-get update && sudo apt-get install -y python3-yaml
+fi
+
 chart_version() {
   grep -A2 "name: $1" "${ROOT_DIR}/Chart.lock" | grep 'version:' | awk '{print $2}'
 }
@@ -45,6 +50,15 @@ KYVERNO_VER="$(chart_version kyverno)"
 "${SCRIPT_DIR}/render-helm-values.sh"
 
 cd "$ROOT_DIR"
+
+echo ">>> Configuring Helm repositories..."
+helm repo add cilium https://helm.cilium.io/ >/dev/null 2>&1 || true
+helm repo add falcosecurity https://falcosecurity.github.io/charts >/dev/null 2>&1 || true
+helm repo add kyverno https://kyverno.github.io/kyverno/ >/dev/null 2>&1 || true
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+helm repo update
+
 helm dependency build .
 
 helm_wait=(--wait --timeout "$HELM_WAIT_TIMEOUT")

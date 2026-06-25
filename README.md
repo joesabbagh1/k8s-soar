@@ -42,7 +42,7 @@ Run the pre-flight check script:
 This script will:
 1. Detect existing components.
 2. Auto-generate a `values-brownfield.yaml` file to disable what you already have.
-3. You can then run `./scripts/helm-install.sh` which will respect these overrides and only deploy the missing SOAR stack components.
+3. Automatically run `./scripts/helm-install.sh` to seamlessly deploy the missing SOAR stack components on top of your existing cluster.
 
 ## Install: One-command (Bare-metal from scratch)
 
