@@ -469,7 +469,7 @@
     - name: Apply policies and lab
       ansible.builtin.shell: |
         ./scripts/wait-for-policy-crds.sh
-        ./scripts/apply-policies-lab.sh
+        ./scripts/apply-policies.sh
       args:
         chdir: "{{ k8s_soar_chart_path }}"
       environment:

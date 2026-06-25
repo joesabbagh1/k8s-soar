@@ -281,7 +281,6 @@ def main() -> None:
 
     parent_values = {
         "policies": values.get("policies", {"enabled": False}),
-        "lab": values.get("lab", {"enabled": False}),
         "soar": soar_values,
         "observability": {
             "enabled": enable_obs,

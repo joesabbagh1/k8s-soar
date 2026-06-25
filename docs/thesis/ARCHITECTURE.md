@@ -17,7 +17,7 @@ k8s-soar delivers a layered security stack on bare-metal Kubernetes:
 ## Install flow
 
 ```text
-Bare metal servers ──► Ansible (kubeadm) ──► Helm (k8s-soar) ──► policies ──► lab ──► scenarios
+Bare metal servers ──► Ansible (kubeadm) ──► Helm (k8s-soar) ──► policies ──► scenarios
 ```
 
 After `kubeadm init`, nodes are NotReady until Helm installs Cilium as the pod network.
@@ -25,8 +25,7 @@ After `kubeadm init`, nodes are NotReady until Helm installs Cilium as the pod n
 ## Design decisions
 
 - **Cilium as single CNI** — installed immediately after kubeadm; no Flannel/Calico.
-- **Policies and lab bundled in Helm** — sourced from `policies/` and `lab/` via chart templates.
-- **security-lab namespace** — all attack simulations isolated from other workloads.
+- **Policies bundled in Helm** — sourced from `policies/` via chart templates.
 - **Single install path** — bare-metal bootstrap only; no brownfield/k3s/kind variants.
 
 ## SOAR flow

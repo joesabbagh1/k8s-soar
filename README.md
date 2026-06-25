@@ -16,9 +16,8 @@
 3. **Falco** — runtime threat detection (modern eBPF) + custom rules
 4. **Tetragon** — kernel-level enforcement policies
 5. **Kyverno** — admission policies-as-code
-6. **security-lab** — isolated namespace for attack scenarios
-7. **SOAR responder** — Detect → Isolate via falcosidekick webhook (enabled by default)
-8. **Observability** — Grafana + Prometheus + Loki for findings dashboards and alerts (enabled by default)
+6. **SOAR responder** — Detect → Isolate via falcosidekick webhook (enabled by default)
+7. **Observability** — Grafana + Prometheus + Loki for findings dashboards and alerts (enabled by default)
 
 ## Prerequisites
 
@@ -98,8 +97,7 @@ Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./ansible/setup.sh`
 | Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`ansible/setup.sh`) |
 | Grafana / Prometheus / Loki | Split Helm releases (`monitoring` namespace) |
 | Falco custom rules | `render-helm-values.sh` overlay |
-| Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
-| security-lab namespace + victim app | `scripts/apply-policies-lab.sh` |
+| Kyverno + Tetragon + quarantine policies | `scripts/apply-policies.sh` |
 | SOAR responder + webhook | On by default; disable with `enable_soar: false` or `K8S_SOAR_ENABLE_SOAR=0` |
 | Grafana dashboards + Loki alerts | On by default; `./scripts/port-forward-grafana.sh` |
 | Observability stack | On by default; disable with `observability.enabled: false` or `K8S_SOAR_ENABLE_OBSERVABILITY=0` |
@@ -114,7 +112,6 @@ To update policies without a full reinstall: `kubectl apply -k policies/`
 ```bash
 ./scripts/verify-stack.sh
 kubectl get cpol -A
-kubectl get ns security-lab
 ```
 
 ## Documentation

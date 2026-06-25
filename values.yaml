@@ -4,14 +4,11 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# Policies and lab — applied via scripts/apply-policies-lab.sh after Helm install
+# Policies — applied via scripts/apply-policies.sh after Helm install
 # (not bundled in the chart; umbrella release Secret would exceed the 1MB limit)
 # ------------------------------------------------------------------------------
 policies:
-  enabled: false
-
-lab:
-  enabled: false
+  enabled: true
 
 # ------------------------------------------------------------------------------
 # SOAR — Detect → Isolate response automation
