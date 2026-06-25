@@ -466,7 +466,7 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
-    - name: Apply policies and lab
+    - name: Apply policies
       ansible.builtin.shell: |
         ./scripts/wait-for-policy-crds.sh
         ./scripts/apply-policies.sh
