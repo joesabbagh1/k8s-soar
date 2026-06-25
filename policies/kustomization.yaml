@@ -4,4 +4,3 @@ resources:
   - kyverno
   - tetragon
   - cilium/quarantine-cnp.yaml
-  - network/quarantine-networkpolicy.yaml
