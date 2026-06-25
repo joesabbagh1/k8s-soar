@@ -16,6 +16,14 @@ if ! python3 -c 'import yaml' >/dev/null 2>&1; then
   sudo apt-get update && sudo apt-get install -y python3-yaml
 fi
 
+if ! command -v helm &> /dev/null; then
+  echo ">>> Helm not found. Installing..."
+  curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+  chmod 700 get_helm.sh
+  ./get_helm.sh
+  rm get_helm.sh
+fi
+
 chart_version() {
   grep -A2 "name: $1" "${ROOT_DIR}/Chart.lock" | grep 'version:' | awk '{print $2}'
 }
