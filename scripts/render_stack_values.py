@@ -286,6 +286,9 @@ def main() -> None:
         "falco": {"enabled": False},
         "tetragon": {"enabled": False},
         "kyverno": {"enabled": False},
+        "loki": {"enabled": False},
+        "promtail": {"enabled": False},
+        "kube-prometheus-stack": {"enabled": False},
     }
 
     for key in ("cilium", "tetragon", "kyverno"):
