@@ -27,7 +27,7 @@ helm repo add cilium https://helm.cilium.io/
 helm repo add kyverno https://kyverno.github.io/kyverno/
 helm repo update
 
-./scripts/install.sh
+./ansible/setup.sh
 
 # Attack simulations — manual, run individually when ready
 ```

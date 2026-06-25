@@ -27,23 +27,6 @@
 - Ansible ≥ 2.14 on operator machine
 - SSH + sudo access to all nodes
 
-**For Brownfield (Existing Clusters like Homelabs, EKS, k3s):**
-- A running Kubernetes cluster
-- `kubectl` context pointing to the cluster
-
-## Install: Brownfield (Existing Cluster)
-
-If you already have a running cluster (like a homelab), `k8s-soar` can dynamically adapt and skip installing tools you already have (like Cilium).
-
-Run the pre-flight check script:
-```bash
-./scripts/brownfield-setup.sh
-```
-This script will:
-1. Detect existing components.
-2. Auto-generate a `values-brownfield.yaml` file to disable what you already have.
-3. Automatically run `./scripts/install.sh` to seamlessly deploy the missing SOAR stack components on top of your existing cluster.
-
 ## Install: One-command (Bare-metal from scratch)
 
 ```bash
@@ -99,12 +82,12 @@ observability:
   enabled: false
 ```
 
-Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/install.sh`
+Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./ansible/setup.sh`
 
 ## Manual Helm install (kubeadm already done)
 
 ```bash
-./scripts/install.sh
+./ansible/setup.sh
 ```
 
 ## What is automated vs manual
@@ -112,7 +95,7 @@ Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./scripts/install.sh`
 | Step | Automated by |
 |------|----------------|
 | OS + kubeadm cluster | Ansible |
-| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`scripts/install.sh`) |
+| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`ansible/setup.sh`) |
 | Grafana / Prometheus / Loki | Split Helm releases (`monitoring` namespace) |
 | Falco custom rules | `render-helm-values.sh` overlay |
 | Kyverno + Tetragon + quarantine policies | `scripts/apply-policies-lab.sh` |
