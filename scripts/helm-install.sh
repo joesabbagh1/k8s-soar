@@ -20,11 +20,19 @@ observability_enabled() {
     [[ "${K8S_SOAR_ENABLE_OBSERVABILITY}" == "1" ]]
     return
   fi
+  component_enabled "observability"
+}
+
+component_enabled() {
+  local comp=$1
   [[ "$(python3 - <<PY
 import yaml
 from pathlib import Path
-values = yaml.safe_load(Path("${ROOT_DIR}/values.yaml").read_text()) or {}
-print("1" if (values.get("observability") or {}).get("enabled", True) else "0")
+v = yaml.safe_load(Path("${ROOT_DIR}/values.yaml").read_text()) or {}
+if Path("${ROOT_DIR}/values-brownfield.yaml").exists():
+    b = yaml.safe_load(Path("${ROOT_DIR}/values-brownfield.yaml").read_text()) or {}
+    v.update(b)
+print("1" if str((v.get("$comp") or {}).get("enabled", True)).lower() == "true" else "0")
 PY
 )" == "1" ]]
 }
@@ -48,24 +56,32 @@ if observability_enabled; then
   PROMTAIL_VER="$(chart_version promtail)"
 fi
 
-echo ">>> [1/${total_steps}] Cilium (CNI) → kube-system"
-helm upgrade --install cilium "${ROOT_DIR}/charts/cilium-${CILIUM_VER}.tgz" \
-  --namespace kube-system \
-  --create-namespace \
-  -f "${GENERATED_DIR}/cilium-values.yaml" \
-  "${helm_wait[@]}" \
-  "$@"
+if component_enabled "cilium"; then
+  echo ">>> [1/${total_steps}] Cilium (CNI) → kube-system"
+  helm upgrade --install cilium "${ROOT_DIR}/charts/cilium-${CILIUM_VER}.tgz" \
+    --namespace kube-system \
+    --create-namespace \
+    -f "${GENERATED_DIR}/cilium-values.yaml" \
+    "${helm_wait[@]}" \
+    "$@"
 
-echo ">>> Waiting for nodes after Cilium..."
-kubectl wait --for=condition=Ready nodes --all --timeout=600s
+  echo ">>> Waiting for nodes after Cilium..."
+  kubectl wait --for=condition=Ready nodes --all --timeout=600s
+else
+  echo ">>> Skipping Cilium (disabled for brownfield)"
+fi
 
-echo ">>> [2/${total_steps}] Kyverno → kyverno"
-helm upgrade --install kyverno "${ROOT_DIR}/charts/kyverno-${KYVERNO_VER}.tgz" \
-  --namespace kyverno \
-  --create-namespace \
-  -f "${GENERATED_DIR}/kyverno-values.yaml" \
-  "${helm_wait[@]}" \
-  "$@"
+if component_enabled "kyverno"; then
+  echo ">>> [2/${total_steps}] Kyverno → kyverno"
+  helm upgrade --install kyverno "${ROOT_DIR}/charts/kyverno-${KYVERNO_VER}.tgz" \
+    --namespace kyverno \
+    --create-namespace \
+    -f "${GENERATED_DIR}/kyverno-values.yaml" \
+    "${helm_wait[@]}" \
+    "$@"
+else
+  echo ">>> Skipping Kyverno (disabled for brownfield)"
+fi
 
 if observability_enabled; then
   echo ">>> [3/${total_steps}] Loki → ${MONITORING_NS}"
@@ -96,22 +112,30 @@ if observability_enabled; then
   falco_step=6
 fi
 
-echo ">>> [${falco_step}/${total_steps}] Falco → falco"
-helm upgrade --install falco "${ROOT_DIR}/charts/falco-${FALCO_VER}.tgz" \
-  --namespace falco \
-  --create-namespace \
-  -f "${GENERATED_DIR}/falco-values.yaml" \
-  "${helm_wait[@]}" \
-  "$@"
+if component_enabled "falco"; then
+  echo ">>> [${falco_step}/${total_steps}] Falco → falco"
+  helm upgrade --install falco "${ROOT_DIR}/charts/falco-${FALCO_VER}.tgz" \
+    --namespace falco \
+    --create-namespace \
+    -f "${GENERATED_DIR}/falco-values.yaml" \
+    "${helm_wait[@]}" \
+    "$@"
+else
+  echo ">>> Skipping Falco (disabled for brownfield)"
+fi
 
 tetragon_step=$((falco_step + 1))
-echo ">>> [${tetragon_step}/${total_steps}] Tetragon → kube-system"
-helm upgrade --install tetragon "${ROOT_DIR}/charts/tetragon-${TETRAGON_VER}.tgz" \
-  --namespace kube-system \
-  -f "${GENERATED_DIR}/tetragon-values.yaml" \
-  --set crds.installMethod=operator \
-  "${helm_wait[@]}" \
-  "$@"
+if component_enabled "tetragon"; then
+  echo ">>> [${tetragon_step}/${total_steps}] Tetragon → kube-system"
+  helm upgrade --install tetragon "${ROOT_DIR}/charts/tetragon-${TETRAGON_VER}.tgz" \
+    --namespace kube-system \
+    -f "${GENERATED_DIR}/tetragon-values.yaml" \
+    --set crds.installMethod=operator \
+    "${helm_wait[@]}" \
+    "$@"
+else
+  echo ">>> Skipping Tetragon (disabled for brownfield)"
+fi
 
 soar_step=$((tetragon_step + 1))
 echo ">>> [${soar_step}/${total_steps}] k8s-soar extras (SOAR responder) → ${NAMESPACE}"

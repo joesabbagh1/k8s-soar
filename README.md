@@ -22,11 +22,29 @@
 
 ## Prerequisites
 
+**For Bare-Metal (From Scratch):**
 - Bare-metal or VM servers: Ubuntu 22.04+, kernel ≥ 5.10
 - Ansible ≥ 2.14 on operator machine
 - SSH + sudo access to all nodes
 
-## One-command install (bare metal from scratch)
+**For Brownfield (Existing Clusters like Homelabs, EKS, k3s):**
+- A running Kubernetes cluster
+- `kubectl` context pointing to the cluster
+
+## Install: Brownfield (Existing Cluster)
+
+If you already have a running cluster (like a homelab), `k8s-soar` can dynamically adapt and skip installing tools you already have (like Cilium).
+
+Run the pre-flight check script:
+```bash
+./scripts/brownfield-setup.sh
+```
+This script will:
+1. Detect existing components.
+2. Auto-generate a `values-brownfield.yaml` file to disable what you already have.
+3. You can then run `./scripts/helm-install.sh` which will respect these overrides and only deploy the missing SOAR stack components.
+
+## Install: One-command (Bare-metal from scratch)
 
 ```bash
 cd ansible
