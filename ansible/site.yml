@@ -518,6 +518,16 @@
       ansible.builtin.set_fact:
         shuffle_admin_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=16') }}"
 
+    - name: Store Shuffle admin credentials in a Kubernetes Secret
+      ansible.builtin.shell: >
+        kubectl create secret generic shuffle-admin-auth
+        -n shuffle
+        --from-literal=username='admin@k8s-soar.local'
+        --from-literal=password='{{ shuffle_admin_password }}'
+        --dry-run=client -o yaml | kubectl apply -f -
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+
     - name: Auto-setup Shuffle Playbooks (Background port-forward)
       ansible.builtin.shell: |
         kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000 > /dev/null 2>&1 &
