@@ -377,6 +377,18 @@
         KUBECONFIG: "{{ kubeconfig_dest }}"
       when: helm_values.cilium.enabled | default(false) | bool
 
+    - name: Wait for Cilium to be ready
+      ansible.builtin.command: kubectl rollout status ds/cilium -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+      when: helm_values.cilium.enabled | default(false) | bool
+
+    - name: Wait for CoreDNS to be ready
+      ansible.builtin.command: kubectl rollout status deployment/coredns -n kube-system --timeout=300s
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+      when: helm_values.cilium.enabled | default(false) | bool
+
     - name: Install Kyverno
       ansible.builtin.command: >
         helm upgrade --install kyverno charts/kyverno-{{ versions['kyverno'] }}.tgz
