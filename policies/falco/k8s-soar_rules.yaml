@@ -11,7 +11,7 @@
     Reverse shell suspected (k8s-soar scenario 04)
     ns=%k8s.ns.name pod=%k8s.pod.name proc=%proc.name connection=%fd.name
   priority: CRITICAL
-  tags: [k8s-soar, scenario-04, mitre_execution]
+  tags: [k8s-soar, scenario-04, mitre_execution, soar_quarantine]
 
 - rule: K8sSoar Sensitive Credential Access
   desc: Read of service account token or secrets mount inside security-lab
@@ -26,7 +26,7 @@
     Sensitive credential file read (k8s-soar scenario 03)
     ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
   priority: WARNING
-  tags: [k8s-soar, scenario-03, mitre_credential_access]
+  tags: [k8s-soar, scenario-03, mitre_credential_access, soar_quarantine]
 
 - rule: K8sSoar Crypto Miner Process
   desc: Unexpected miner-like process names in security-lab
@@ -38,7 +38,7 @@
     Crypto miner process detected (k8s-soar scenario 05)
     ns=%k8s.ns.name pod=%k8s.pod.name proc=%proc.name
   priority: CRITICAL
-  tags: [k8s-soar, scenario-05, mitre_impact]
+  tags: [k8s-soar, scenario-05, mitre_impact, soar_delete]
 
 - rule: K8sSoar Shell In Victim Container
   desc: Interactive shell spawned in security-lab victim workload
@@ -50,4 +50,4 @@
     Shell spawned in victim container (k8s-soar scenario 01)
     ns=%k8s.ns.name pod=%k8s.pod.name shell=%proc.name parent=%proc.pname
   priority: WARNING
-  tags: [k8s-soar, scenario-01, mitre_execution]
+  tags: [k8s-soar, scenario-01, mitre_execution, soar_notify_only]

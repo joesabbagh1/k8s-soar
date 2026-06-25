@@ -206,11 +206,14 @@ fi
 echo ">>> k8s-soar installed (split Helm releases + policies + lab)"
 echo ""
 echo ">>> ==========================================================================="
-echo ">>> NEXT STEPS: LINK SHUFFLE WEBHOOK"
-echo ">>> 1. Access Shuffle UI: kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000"
-echo ">>> 2. Open http://localhost:3001, create an admin account, and Import the playbook from playbooks/quarantine.json"
-echo ">>> 3. Click the Webhook node, start it, and copy the Webhook URI."
-echo ">>> 4. Link Falco to Shuffle by running: ./scripts/link-shuffle.sh <WEBHOOK_URI>"
+echo ">>> AUTOMATING SHUFFLE CONFIGURATION"
+echo ">>> Starting temporary port-forward to Shuffle API..."
+kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000 > /dev/null 2>&1 &
+PF_PID=$!
+
+python3 "${SCRIPT_DIR}/auto-setup-shuffle.py" || true
+
+kill $PF_PID > /dev/null 2>&1 || true
 echo ">>> ==========================================================================="
 echo ""
 if observability_enabled; then

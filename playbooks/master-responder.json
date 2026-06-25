@@ -1,0 +1,11 @@
+{
+  "name": "K8s-SOAR-Master-Responder",
+  "description": "Receives alerts from Falco and routes them based on action tags (soar_quarantine, soar_delete, etc). You can build your visual logic here using the Kubernetes App!",
+  "workflow": [
+    {
+      "name": "Falco Webhook",
+      "description": "Webhook entry point for falcosidekick",
+      "type": "webhook"
+    }
+  ]
+}
