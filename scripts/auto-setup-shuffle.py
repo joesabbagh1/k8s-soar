@@ -72,24 +72,24 @@ def login(password):
     print(">>> Failed to login. User may not be initialized yet.")
     sys.exit(0)
 
-def import_playbooks(auth, playbooks_dir):
-    playbook_files = glob.glob(os.path.join(playbooks_dir, "*.json"))
-    if not playbook_files:
-        print(f">>> No playbooks found in {playbooks_dir}")
+def import_workflows(auth, workflows_dir):
+    workflow_files = glob.glob(os.path.join(workflows_dir, "*.json"))
+    if not workflow_files:
+        print(f">>> No workflows found in {workflows_dir}")
         return []
         
     imported_ids = []
-    for pb_path in playbook_files:
-        with open(pb_path, 'r') as f:
+    for wf_path in workflow_files:
+        with open(wf_path, 'r') as f:
             workflow_data = json.load(f)
             
-        print(f">>> Importing Workflow: {os.path.basename(pb_path)}...")
+        print(f">>> Importing Workflow: {os.path.basename(wf_path)}...")
         res = make_request("/workflows", payload=workflow_data, auth=auth)
         if res and res.get("id"):
             imported_ids.append(res.get("id"))
-            print(f">>> Successfully imported {os.path.basename(pb_path)} with ID: {res.get('id')}")
+            print(f">>> Successfully imported {os.path.basename(wf_path)} with ID: {res.get('id')}")
         else:
-            print(f">>> Failed to import {os.path.basename(pb_path)}.")
+            print(f">>> Failed to import {os.path.basename(wf_path)}.")
             
     return imported_ids
 
@@ -112,7 +112,7 @@ def main():
         
     password = sys.argv[1]
     script_dir = os.path.dirname(__file__)
-    playbooks_dir = os.path.join(script_dir, "..", "playbooks")
+    workflows_dir = os.path.join(script_dir, "..", "workflows")
     
     wait_for_shuffle()
     auth = login(password)
@@ -120,7 +120,7 @@ def main():
         print(">>> Could not retrieve auth token. Manual Shuffle setup required.")
         sys.exit(0)
         
-    wf_ids = import_playbooks(auth, playbooks_dir)
+    wf_ids = import_workflows(auth, workflows_dir)
     
     found_webhook = False
     for wf_id in wf_ids:

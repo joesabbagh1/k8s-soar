@@ -533,7 +533,7 @@
         KUBECONFIG: "{{ kubeconfig_dest }}"
       when: helm_values.observability.enabled | default(false) | bool
 
-    - name: Auto-setup Shuffle Playbooks (Background port-forward)
+    - name: Auto-setup Shuffle Workflows (Background port-forward)
       ansible.builtin.shell: |
         kubectl port-forward svc/shuffle-frontend -n shuffle 3001:80 > /dev/null 2>&1 &
         PF_PID=$!
