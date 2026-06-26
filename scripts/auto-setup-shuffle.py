@@ -40,7 +40,11 @@ def wait_for_shuffle():
             urllib.request.urlopen(req, timeout=5)
             print(">>> Shuffle API is up!")
             return True
-        except:
+        except urllib.error.HTTPError:
+            # Server responded with 401, 404, etc., meaning it is UP!
+            print(">>> Shuffle API is up!")
+            return True
+        except Exception as e:
             time.sleep(5)
     print(">>> Error: Timed out waiting for Shuffle API.")
     sys.exit(1)
