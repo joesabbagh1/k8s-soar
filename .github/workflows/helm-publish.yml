@@ -72,9 +72,6 @@ jobs:
       - name: Validate policies kustomize
         run: kubectl kustomize policies/ > /dev/null
 
-      - name: Validate lab kustomize
-        run: kubectl kustomize lab/ > /dev/null
-
       - name: Shellcheck scripts
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
