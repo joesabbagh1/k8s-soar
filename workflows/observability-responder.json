@@ -1,0 +1,48 @@
+{
+  "name": "Observability Responder",
+  "description": "Handles Alertmanager webhooks, queries Loki/Prometheus, and posts annotations to Grafana",
+  "triggers": [
+    {
+      "app_name": "Webhook",
+      "name": "Alertmanager Webhook",
+      "id": "alertmanager-webhook-trigger",
+      "position": { "x": 100, "y": 100 }
+    }
+  ],
+  "actions": [
+    {
+      "name": "Query Loki",
+      "app_name": "HTTP",
+      "id": "action_query_loki",
+      "position": { "x": 300, "y": -50 },
+      "parameters": [
+        {"name": "url", "value": "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/query"},
+        {"name": "method", "value": "GET"},
+        {"name": "body", "value": "{\"query\":\"{namespace=\\\"default\\\"}\"}"}
+      ]
+    },
+    {
+      "name": "Query Prometheus",
+      "app_name": "HTTP",
+      "id": "action_query_prometheus",
+      "position": { "x": 300, "y": 100 },
+      "parameters": [
+        {"name": "url", "value": "http://kube-prometheus-stack-prometheus.monitoring.svc.cluster.local:9090/api/v1/query"},
+        {"name": "method", "value": "GET"},
+        {"name": "body", "value": "{\"query\":\"up\"}"}
+      ]
+    },
+    {
+      "name": "Post Grafana Annotation",
+      "app_name": "HTTP",
+      "id": "action_grafana_annotation",
+      "position": { "x": 300, "y": 250 },
+      "parameters": [
+        {"name": "url", "value": "http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local/api/annotations"},
+        {"name": "method", "value": "POST"},
+        {"name": "headers", "value": "{\"Authorization\": \"Basic YWRtaW46azhzLXNvYXI=\", \"Content-Type\": \"application/json\"}"},
+        {"name": "body", "value": "{\"text\": \"Shuffle Action Executed\", \"tags\": [\"soar\", \"shuffle\"]}"}
+      ]
+    }
+  ]
+}
