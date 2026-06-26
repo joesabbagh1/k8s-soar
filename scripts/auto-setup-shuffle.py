@@ -17,6 +17,7 @@ def make_request(endpoint, payload=None, token=None, method="POST"):
     headers = {'Content-Type': 'application/json'}
     if token:
         headers['Authorization'] = f"Bearer {token}"
+        headers['Cookie'] = f"session_token={token}"
         
     data = json.dumps(payload).encode('utf-8') if payload else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -52,6 +53,12 @@ def login(password):
     for _ in range(5):
         login_res = make_request("/login", payload)
         if login_res and login_res.get("success"):
+            # Check for token in cookies (Shuffle 1.2+ style)
+            cookies = login_res.get("cookies", [])
+            for c in cookies:
+                if c.get("key") == "session_token":
+                    return c.get("value")
+            # Fallback to root token
             return login_res.get("token") or login_res.get("access_token")
         time.sleep(5)
         
