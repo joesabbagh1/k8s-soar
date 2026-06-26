@@ -12,12 +12,15 @@ import glob
 BASE_URL = "http://localhost:3001/api/v1"
 USERNAME = "admin@k8s-soar.local"
 
-def make_request(endpoint, payload=None, token=None, method="POST"):
+def make_request(endpoint, payload=None, auth=None, method="POST"):
     url = f"{BASE_URL}{endpoint}"
     headers = {'Content-Type': 'application/json'}
-    if token:
-        headers['Authorization'] = f"Bearer {token}"
-        headers['Cookie'] = f"session_token={token}"
+    if auth:
+        auth_type, auth_val = auth
+        if auth_type == "cookie":
+            headers['Cookie'] = f"session_token={auth_val}"
+        else:
+            headers['Authorization'] = f"Bearer {auth_val}"
         
     data = json.dumps(payload).encode('utf-8') if payload else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
@@ -61,15 +64,15 @@ def login(password):
             cookies = login_res.get("cookies", [])
             for c in cookies:
                 if c.get("key") == "session_token":
-                    return c.get("value")
+                    return ("cookie", c.get("value"))
             # Fallback to root token
-            return login_res.get("token") or login_res.get("access_token")
+            return ("bearer", login_res.get("token") or login_res.get("access_token"))
         time.sleep(5)
         
     print(">>> Failed to login. User may not be initialized yet.")
     sys.exit(0)
 
-def import_playbooks(token, playbooks_dir):
+def import_playbooks(auth, playbooks_dir):
     playbook_files = glob.glob(os.path.join(playbooks_dir, "*.json"))
     if not playbook_files:
         print(f">>> No playbooks found in {playbooks_dir}")
@@ -81,7 +84,7 @@ def import_playbooks(token, playbooks_dir):
             workflow_data = json.load(f)
             
         print(f">>> Importing Workflow: {os.path.basename(pb_path)}...")
-        res = make_request("/workflows", payload=workflow_data, token=token)
+        res = make_request("/workflows", payload=workflow_data, auth=auth)
         if res and res.get("id"):
             imported_ids.append(res.get("id"))
             print(f">>> Successfully imported {os.path.basename(pb_path)} with ID: {res.get('id')}")
@@ -90,8 +93,8 @@ def import_playbooks(token, playbooks_dir):
             
     return imported_ids
 
-def generate_webhook(token, workflow_id):
-    res = make_request(f"/workflows/{workflow_id}", token=token, method="GET")
+def generate_webhook(auth, workflow_id):
+    res = make_request(f"/workflows/{workflow_id}", auth=auth, method="GET")
     if not res: return None
     
     triggers = [n for n in res.get('triggers', []) if n.get('app_name') == 'Webhook']
@@ -112,16 +115,16 @@ def main():
     playbooks_dir = os.path.join(script_dir, "..", "playbooks")
     
     wait_for_shuffle()
-    token = login(password)
-    if not token:
+    auth = login(password)
+    if not auth:
         print(">>> Could not retrieve auth token. Manual Shuffle setup required.")
         sys.exit(0)
         
-    wf_ids = import_playbooks(token, playbooks_dir)
+    wf_ids = import_playbooks(auth, playbooks_dir)
     
     found_webhook = False
     for wf_id in wf_ids:
-        webhook_url = generate_webhook(token, wf_id)
+        webhook_url = generate_webhook(auth, wf_id)
         if webhook_url:
             print(f">>> Linking Falco to Webhook: {webhook_url}")
             link_script = os.path.join(script_dir, "link-shuffle.sh")
