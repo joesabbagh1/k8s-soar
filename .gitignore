@@ -21,3 +21,4 @@ evidence/*
 .idea/
 .vscode/
 *.swp
+ansible/ansible.cfg
