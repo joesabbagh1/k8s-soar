@@ -1,0 +1,2 @@
+🚀 process security-lab/dvwa-5d44f5c75d-8rh8k /bin/cat /var/run/secrets/kubernetes.io/serviceaccount/token
+💥 exit    security-lab/dvwa-5d44f5c75d-8rh8k /bin/cat /var/run/secrets/kubernetes.io/serviceaccount/token 0
