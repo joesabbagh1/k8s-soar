@@ -23,6 +23,7 @@ spec:
       labels:
         app: dvwa
         app.kubernetes.io/name: dvwa
+        scenario: "04"
     spec:
       containers:
         - name: dvwa
