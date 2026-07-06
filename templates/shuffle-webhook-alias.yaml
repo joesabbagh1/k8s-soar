@@ -1,0 +1,17 @@
+# Alias Service so falcosidekick / Alertmanager / auto-setup-shuffle.py can
+# reach Shuffle's backend via the "shuffle-webhook" hostname referenced
+# throughout values.yaml, without needing to know the real chart-generated
+# service name (shuffle-backend).
+apiVersion: v1
+kind: Service
+metadata:
+  name: shuffle-webhook
+  namespace: shuffle
+  labels:
+    app.kubernetes.io/part-of: k8s-soar
+spec:
+  type: ExternalName
+  externalName: shuffle-backend.shuffle.svc.cluster.local
+  ports:
+    - port: 5001
+      targetPort: 5001

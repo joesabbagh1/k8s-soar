@@ -1,0 +1,2 @@
+HTTP/1.0 403 Forbidden
+{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"pods is forbidden: User \"system:serviceaccount:security-lab:default\" cannot create resource \"pods\" in API group \"\" in the namespace \"security-lab\"","reason":"Forbidden","details":{"kind":"pods"},"code":403}
