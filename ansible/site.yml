@@ -535,7 +535,7 @@
 
     - name: Auto-setup Shuffle Workflows (Background port-forward)
       ansible.builtin.shell: |
-        pkill -f "kubectl port-forward svc/shuffle-frontend" || true
+        pkill -f "[k]ubectl port-forward svc/shuffle-frontend" || true
         while true; do kubectl port-forward svc/shuffle-frontend -n shuffle 3001:80 > /dev/null 2>&1 || true; sleep 2; done &
         PF_PID=$!
         sleep 5
