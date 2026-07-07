@@ -535,13 +535,17 @@
 
     - name: Auto-setup Shuffle Workflows (Background port-forward)
       ansible.builtin.shell: |
-        pkill -f "[k]ubectl port-forward svc/shuffle-frontend" || true
-        while true; do kubectl port-forward svc/shuffle-frontend -n shuffle 3001:80 > /dev/null 2>&1 || true; sleep 2; done &
+        # Safely kill anything listening on port 3001 without killing this script
+        fuser -k 3001/tcp > /dev/null 2>&1 || kill $(lsof -t -i:3001) > /dev/null 2>&1 || true
+        # Start port-forward directly (no loop, so $PF_PID is the actual kubectl process)
+        kubectl port-forward svc/shuffle-frontend -n shuffle 3001:80 > /dev/null 2>&1 &
         PF_PID=$!
         sleep 5
         python3 ./scripts/auto-setup-shuffle.py "{{ shuffle_admin_password }}"
         RET=$?
+        # Clean up the actual kubectl process
         kill $PF_PID > /dev/null 2>&1 || true
+        wait $PF_PID 2>/dev/null || true
         exit $RET
       args:
         chdir: "{{ k8s_soar_chart_path }}"
