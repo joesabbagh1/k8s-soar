@@ -44,6 +44,14 @@ def wait_for_shuffle():
             print(">>> Shuffle API is up! Waiting 30s for database migrations...")
             time.sleep(30)
             return True
+        except urllib.error.HTTPError as e:
+            if e.code in [502, 503, 504]:
+                time.sleep(5)
+                continue
+            # If we get a 401, 403, or 404, the server is UP and responding to HTTP
+            print(">>> Shuffle API is up! Waiting 30s for database migrations...")
+            time.sleep(30)
+            return True
         except Exception as e:
             time.sleep(5)
     print(">>> Error: Timed out waiting for Shuffle API.")
