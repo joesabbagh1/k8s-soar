@@ -511,6 +511,12 @@
       environment:
         KUBECONFIG: "{{ kubeconfig_dest }}"
 
+    - name: Configure RBAC for Shuffle SOAR Responder
+      ansible.builtin.command: >
+        kubectl apply -f files/shuffle-rbac.yaml
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+
     - name: Wait for all pods to be Ready (this may take minutes)
       ansible.builtin.shell: |
         kubectl get pods -A --no-headers | awk '{if ($4 != "Running" && $4 != "Completed") print $1"/"$2" ("$4")"}' | grep -v "^$" || true
