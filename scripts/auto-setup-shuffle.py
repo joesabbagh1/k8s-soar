@@ -41,14 +41,8 @@ def wait_for_shuffle():
         try:
             req = urllib.request.Request(f"{BASE_URL}/info", method="GET")
             urllib.request.urlopen(req, timeout=5)
-            print(">>> Shuffle API is up!")
-            return True
-        except urllib.error.HTTPError as e:
-            if e.code in [502, 503, 504]:
-                time.sleep(5)
-                continue
-            # Server responded with 401, 404, etc., meaning the API is responding
-            print(">>> Shuffle API is up!")
+            print(">>> Shuffle API is up! Waiting 30s for database migrations...")
+            time.sleep(30)
             return True
         except Exception as e:
             time.sleep(5)
@@ -59,7 +53,7 @@ def login(password):
     print(">>> Attempting to login...")
     payload = {"username": USERNAME, "password": password}
     
-    # Retry login in case the backend is still initializing the user
+    # Retry login with larger delay to avoid 429 Too Many Requests
     for _ in range(12):
         login_res = make_request("/login", payload)
         if login_res and login_res.get("success"):
@@ -70,7 +64,7 @@ def login(password):
                     return ("cookie", c.get("value"))
             # Fallback to root token
             return ("bearer", login_res.get("token") or login_res.get("access_token"))
-        time.sleep(5)
+        time.sleep(15)
         
     print(">>> Failed to login. User may not be initialized yet.")
     sys.exit(1)
