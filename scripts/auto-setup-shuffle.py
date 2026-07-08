@@ -43,8 +43,11 @@ def wait_for_shuffle():
             urllib.request.urlopen(req, timeout=5)
             print(">>> Shuffle API is up!")
             return True
-        except urllib.error.HTTPError:
-            # Server responded with 401, 404, etc., meaning it is UP!
+        except urllib.error.HTTPError as e:
+            if e.code in [502, 503, 504]:
+                time.sleep(5)
+                continue
+            # Server responded with 401, 404, etc., meaning the API is responding
             print(">>> Shuffle API is up!")
             return True
         except Exception as e:
@@ -57,7 +60,7 @@ def login(password):
     payload = {"username": USERNAME, "password": password}
     
     # Retry login in case the backend is still initializing the user
-    for _ in range(5):
+    for _ in range(12):
         login_res = make_request("/login", payload)
         if login_res and login_res.get("success"):
             # Check for token in cookies (Shuffle 1.2+ style)
@@ -70,7 +73,7 @@ def login(password):
         time.sleep(5)
         
     print(">>> Failed to login. User may not be initialized yet.")
-    sys.exit(0)
+    sys.exit(1)
 
 def import_workflows(auth, workflows_dir):
     workflow_files = glob.glob(os.path.join(workflows_dir, "*.json"))
