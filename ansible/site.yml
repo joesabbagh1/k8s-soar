@@ -539,6 +539,13 @@
         KUBECONFIG: "{{ kubeconfig_dest }}"
       when: helm_values.observability.enabled | default(false) | bool
 
+    - name: Ensure Falco custom rules and plugins are properly loaded
+      ansible.builtin.command: ./scripts/repair-falco.sh
+      args:
+        chdir: "{{ k8s_soar_chart_path }}"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_dest }}"
+
     - name: Get Shuffle SOAR Responder Token
       ansible.builtin.command: >
         kubectl get secret shuffle-soar-responder-token -n shuffle -o jsonpath='{.data.token}'
