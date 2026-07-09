@@ -561,7 +561,7 @@
         while true; do kubectl port-forward --address 0.0.0.0 svc/shuffle-frontend -n shuffle 3001:80 > /dev/null 2>&1 || true; sleep 2; done &
         PF_PID=$!
         sleep 5
-        python3 ./scripts/auto-setup-shuffle.py "{{ shuffle_admin_password }}" "$(echo '{{ k8s_token_b64.stdout }}' | base64 -d)"
+        python3 ./scripts/auto-setup-shuffle.py "{{ shuffle_admin_password }}" "$(echo '{{ k8s_token_b64.stdout }}' | base64 -d)" "{{ slack_webhook_url | default('') }}"
         RET=$?
         # Clean up the actual kubectl process
         kill $PF_PID > /dev/null 2>&1 || true
