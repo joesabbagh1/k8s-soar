@@ -1,0 +1,67 @@
+{
+  "workflow_as_code": false,
+  "actions": [
+    {
+      "app_name": "http",
+      "app_version": "1.4.0",
+      "description": "Runs a DELETE request towards the specified endpoint",
+      "app_id": "e9375eac-0fc9-4d4c-9311-df2cf09caff7",
+      "id": "action_delete_pod",
+      "is_valid": true,
+      "isStartNode": true,
+      "sharing": true,
+      "label": "Delete_Compromised_Pod",
+      "public": true,
+      "generated": false,
+      "environment": "Shuffle",
+      "name": "DELETE",
+      "parameters": [
+        {
+          "name": "url",
+          "value": "https://kubernetes.default.svc/api/v1/namespaces/$exec.output_fields.k8s.ns.name/pods/$exec.output_fields.k8s.pod.name"
+        },
+        {
+          "name": "headers",
+          "value": "{\"Authorization\": \"Bearer ##K8S_TOKEN##\"}"
+        },
+        {
+          "name": "verify",
+          "value": "false"
+        }
+      ],
+      "position": {
+        "x": 483,
+        "y": 357
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "app_name": "Webhook",
+      "description": "Custom HTTP input trigger",
+      "status": "uninitialized",
+      "app_version": "1.0.0",
+      "id": "webhook_1",
+      "is_valid": true,
+      "isStartNode": false,
+      "label": "Webhook_1",
+      "environment": "onprem",
+      "trigger_type": "WEBHOOK",
+      "name": "Webhook",
+      "position": {
+        "x": 173,
+        "y": 365
+      }
+    }
+  ],
+  "branches": [
+    {
+      "destination_id": "action_delete_pod",
+      "source_id": "webhook_1"
+    }
+  ],
+  "name": "Delete-Pod",
+  "description": "Deletes compromised pods via K8s API",
+  "start": "action_delete_pod",
+  "isValid": true
+}
