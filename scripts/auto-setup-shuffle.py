@@ -104,11 +104,6 @@ def import_workflows(auth, workflows_dir, k8s_token=None, slack_webhook=None):
             workflow_content = workflow_content.replace('##SLACK_WEBHOOK##', slack_webhook)
             
         workflow_data = json.loads(workflow_content)
-        
-        # Automatically start all webhooks so the user doesn't have to manually start them
-        for trigger in workflow_data.get('triggers', []):
-            if trigger.get('app_name') == 'Webhook':
-                trigger['status'] = 'running'
             
         print(f">>> Importing Workflow: {os.path.basename(wf_path)}...")
         res = make_request("/workflows", payload=workflow_data, auth=auth)
