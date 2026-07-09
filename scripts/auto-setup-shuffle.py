@@ -10,7 +10,7 @@ import os
 import glob
 
 BASE_URL = "http://localhost:3001/api/v1"
-USERNAME = "admin@k8s-soar"
+USERNAME = "admin@k8s-soar.local"
 
 def make_request(endpoint, payload=None, auth=None, method="POST"):
     url = f"{BASE_URL}{endpoint}"
