@@ -124,7 +124,11 @@ def generate_webhook(auth, workflow_id):
         trigger_id = triggers[0].get('id')
         if trigger_id == "alertmanager-webhook-trigger":
             return None # Skip this one, it's hardcoded in Alertmanager config
-        webhook_url = f"http://shuffle-backend.shuffle.svc.cluster.local:5001/api/v1/hooks/{trigger_id}"
+            
+        # Shuffle webhook URLs usually require the 'webhook_' prefix before the ID
+        actual_hook_id = trigger_id if trigger_id.startswith("webhook_") else f"webhook_{trigger_id}"
+        webhook_url = f"http://shuffle-backend.shuffle.svc.cluster.local:5001/api/v1/hooks/{actual_hook_id}"
+        
         print(f">>> Discovered webhook URL: {webhook_url}")
         return webhook_url
     return None
