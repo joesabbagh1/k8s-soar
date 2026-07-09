@@ -77,7 +77,17 @@ def login(password):
     print(">>> Failed to login. User may not be initialized yet.")
     sys.exit(1)
 
-def import_workflows(auth, workflows_dir, k8s_token=None):
+def download_app(auth, app_id, app_name):
+    print(f">>> Downloading App '{app_name}' (ID: {app_id}) from public registry...")
+    res = make_request("/apps/download", payload={"id": app_id}, auth=auth)
+    # Give Shuffle a few seconds to process the downloaded app
+    time.sleep(5)
+    if res:
+        print(f">>> Successfully triggered download for {app_name}")
+    else:
+        print(f">>> Failed to download {app_name}. Manual activation may be required.")
+
+def import_workflows(auth, workflows_dir, k8s_token=None, slack_webhook=None):
     workflow_files = glob.glob(os.path.join(workflows_dir, "*.json"))
     if not workflow_files:
         print(f">>> No workflows found in {workflows_dir}")
@@ -90,6 +100,8 @@ def import_workflows(auth, workflows_dir, k8s_token=None):
             
         if k8s_token:
             workflow_content = workflow_content.replace('##K8S_TOKEN##', k8s_token)
+        if slack_webhook:
+            workflow_content = workflow_content.replace('##SLACK_WEBHOOK##', slack_webhook)
             
         workflow_data = json.loads(workflow_content)
             
@@ -119,11 +131,12 @@ def generate_webhook(auth, workflow_id):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: auto-setup-shuffle.py <admin_password> [k8s_token]")
+        print("Usage: auto-setup-shuffle.py <admin_password> [k8s_token] [slack_webhook]")
         sys.exit(1)
         
     password = sys.argv[1]
     k8s_token = sys.argv[2] if len(sys.argv) > 2 else None
+    slack_webhook = sys.argv[3] if len(sys.argv) > 3 else None
     
     script_dir = os.path.dirname(__file__)
     workflows_dir = os.path.join(script_dir, "..", "workflows")
@@ -134,7 +147,10 @@ def main():
         print(">>> Could not retrieve auth token. Manual Shuffle setup required.")
         sys.exit(0)
         
-    wf_ids = import_workflows(auth, workflows_dir, k8s_token)
+    # Pre-download required apps to avoid "App doesn't exist" errors
+    download_app(auth, "d1ed0d085876172d9a0158e6a5a844e0", "Jira")
+        
+    wf_ids = import_workflows(auth, workflows_dir, k8s_token, slack_webhook)
     
     found_webhook = False
     for wf_id in wf_ids:
