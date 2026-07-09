@@ -20,7 +20,7 @@
     k8s.ns.name != "kube-system" and
     not proc.name startswith runc and
     not proc.name in (containerd-shim, containerd) and
-    fd.name = "/etc/shadow"
+    fd.name = /etc/shadow
   output: >
     Sensitive credential file read (k8s-soar scenario 03)
     ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
