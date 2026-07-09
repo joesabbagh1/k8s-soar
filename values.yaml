@@ -94,7 +94,7 @@ falco:
       webhook:
         # Update this address after configuring the Shuffle webhook
         address: "http://shuffle-backend.shuffle.svc.cluster.local:5001/api/v1/hooks/falco"
-        minimumpriority: "warning"
+        minimumpriority: "critical"
 
   resources:
     requests:

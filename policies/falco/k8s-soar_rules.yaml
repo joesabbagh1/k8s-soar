@@ -25,7 +25,7 @@
   output: >
     Sensitive credential file read (k8s-soar scenario 03)
     ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
-  priority: WARNING
+  priority: CRITICAL
   tags: [k8s-soar, scenario-03, mitre_credential_access, soar_quarantine]
 
 - rule: K8sSoar Crypto Miner Process
