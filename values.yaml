@@ -68,6 +68,11 @@ falco:
   jsonIncludeTagsProperty: true
   logLevel: info
 
+  # Allow custom k8s-soar rules to fire alongside stock rules (e.g. Read sensitive
+  # file untrusted) that share the same open_read event type. Default "first" stops
+  # at the first match and shadows later rules in rules.d/.
+  rule_matching: all
+
   # Explicit refs so falcoctl installs plugins required by collectors.*.enabled.
   # Without these, Falco warns and k8s-soar rules (container + k8s.ns.name) never match.
   falcoctl:
@@ -93,7 +98,7 @@ falco:
     config:
       webhook:
         # Update this address after configuring the Shuffle webhook
-        address: "http://shuffle-backend.shuffle.svc.cluster.local:5001/api/v1/hooks/falco"
+        address: "http://192.168.0.12:3001/api/v1/hooks/webhook_5efef357-41b7-52d2-8184-9b96fbe11ae9"
         minimumpriority: "critical"
 
   resources:

@@ -266,6 +266,39 @@ def build_kube_prometheus_stack_values(obs: dict) -> dict:
     }
 
 
+def format_falco_chart_values(falco_values: dict) -> dict:
+    """Split k8s-soar falco values into Helm chart top-level vs falco.yaml nested keys."""
+    chart_keys = {
+        "namespaceOverride",
+        "tty",
+        "collectors",
+        "driver",
+        "falcoctl",
+        "falcosidekick",
+        "resources",
+        "customRules",
+        "metrics",
+        "serviceMonitor",
+    }
+    runtime_key_map = {
+        "jsonOutput": "json_output",
+        "jsonIncludeOutputProperty": "json_include_output_property",
+        "jsonIncludeTagsProperty": "json_include_tags_property",
+        "logLevel": "log_level",
+        "rule_matching": "rule_matching",
+    }
+
+    chart_values = {k: v for k, v in falco_values.items() if k in chart_keys}
+    runtime_values = dict(falco_values.get("falco") or {})
+    for src, dst in runtime_key_map.items():
+        if src in falco_values:
+            runtime_values[dst] = falco_values[src]
+
+    if runtime_values:
+        chart_values["falco"] = runtime_values
+    return chart_values
+
+
 def main() -> None:
     values = load_yaml(VALUES_FILE)
     rules_text = RULES_FILE.read_text()
@@ -281,6 +314,7 @@ def main() -> None:
     if not enable_soar:
         falco_values.setdefault("falcosidekick", {}).setdefault("config", {}).pop("webhook", None)
     apply_falco_observability(falco_values, enable_obs)
+    falco_chart_values = format_falco_chart_values(falco_values)
 
     soar_values = dict(values.get("soar") or {})
 
@@ -303,7 +337,7 @@ def main() -> None:
     for key in ("cilium", "tetragon", "kyverno"):
         dump_yaml(OUT_DIR / f"{key}-values.yaml", values.get(key) or {})
 
-    dump_yaml(OUT_DIR / "falco-values.yaml", falco_values)
+    dump_yaml(OUT_DIR / "falco-values.yaml", falco_chart_values)
     dump_yaml(OUT_DIR / "k8s-soar-values.yaml", parent_values)
 
     if enable_obs:
@@ -318,7 +352,7 @@ def main() -> None:
         OUT_DIR / "helm-values.yaml",
         parent_values
         | {
-            "falco": falco_values,
+            "falco": falco_chart_values,
             "soar": parent_values["soar"],
             "observability": parent_values["observability"],
         },
