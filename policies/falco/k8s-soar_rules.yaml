@@ -16,11 +16,7 @@
 - rule: K8sSoar Sensitive Credential Access
   desc: Read of service account token or secrets mount inside victim workload
   condition: >
-    open_read and container and
-    k8s.ns.name != "kube-system" and
-    not proc.name startswith runc and
-    not proc.name in (containerd-shim, containerd) and
-    sensitive_files
+    sensitive_files and open_read
   output: >
     Sensitive credential file read (k8s-soar scenario 03)
     ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
