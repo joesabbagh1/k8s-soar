@@ -98,7 +98,7 @@ falco:
     config:
       webhook:
         # Update this address after configuring the Shuffle webhook
-        address: "http://192.168.0.12:3001/api/v1/hooks/webhook_5efef357-41b7-52d2-8184-9b96fbe11ae9"
+        address: "http://192.168.0.12:3001/api/v1/hooks/webhook_ab72f40d-cbbf-55d2-8d88-e5bf8c2d631e"
         minimumpriority: "critical"
 
   resources:
