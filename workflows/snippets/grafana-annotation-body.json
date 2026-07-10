@@ -1,0 +1,6 @@
+{
+  "dashboardUID": "k8s-soar-findings",
+  "time": {{ "now" | date: "%s" | times: 1000 }},
+  "tags": ["soar", "security", "incident"],
+  "text": "🚨 SOAR: $exec.rule — $exec.output_fields.k8s.ns.name/$exec.output_fields.k8s.pod.name"
+}

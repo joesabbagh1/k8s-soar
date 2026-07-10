@@ -6,7 +6,7 @@
   condition: >
     outbound and container and
     proc.name in (bash, sh, dash, zsh) and
-    k8s.ns.name != "kube-system"
+    (not k8s.ns.name exists or k8s.ns.name != "kube-system")
   output: >
     Reverse shell suspected (k8s-soar scenario 04)
     ns=%k8s.ns.name pod=%k8s.pod.name proc=%proc.name connection=%fd.name
@@ -16,7 +16,9 @@
 - rule: K8sSoar Sensitive Credential Access
   desc: Read of service account token or secrets mount inside victim workload
   condition: >
-    sensitive_files and open_read
+    open_read and
+    fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/ and
+    k8s.ns.name = "security-lab"
   output: >
     Sensitive credential file read (k8s-soar scenario 03)
     ns=%k8s.ns.name pod=%k8s.pod.name file=%fd.name proc=%proc.name
@@ -27,7 +29,7 @@
   desc: Unexpected miner-like process names in victim workload
   condition: >
     spawned_process and container and
-    k8s.ns.name != "kube-system" and
+    (not k8s.ns.name exists or k8s.ns.name != "kube-system") and
     proc.name in (xmrig, minerd, cpuminer, ethminer)
   output: >
     Crypto miner process detected (k8s-soar scenario 05)
@@ -39,7 +41,7 @@
   desc: Interactive shell spawned in victim workload
   condition: >
     spawned_process and container and
-    k8s.ns.name != "kube-system" and
+    (not k8s.ns.name exists or k8s.ns.name != "kube-system") and
     proc.name in (bash, sh)
   output: >
     Shell spawned in victim container (k8s-soar scenario 01)

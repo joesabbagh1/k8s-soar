@@ -48,3 +48,28 @@ Replace the Jira app with an **HTTP POST** node:
 - Auth: same as current Jira node
 
 Slack link variable becomes `$HTTP.body.key` (match your node label).
+
+---
+
+## Grafana annotations (red markers on dashboard)
+
+Annotations fail to show when **both** of these are missing:
+
+1. **Dashboard** has no annotation layer querying tags `soar` / `security` / `incident`  
+   → fixed in `observability/grafana/dashboard-k8s-soar-findings.json` (re-provision dashboard after upgrade)
+
+2. **Grafana_Annotations** POST body lacks `dashboardUID` and `time`  
+   → use `workflows/snippets/grafana-annotation-body.json` in the node **Body**
+
+**Grafana_Annotations node** also needs header (already in workflow):
+
+```
+Content-Type: application/json
+Authorization: Basic YWRtaW46azhzLXNvYXI=
+```
+
+(`admin:k8s-soar` base64)
+
+**Verify:** Shuffle execution → Grafana_Annotations → status `200`. Then open **k8s-soar — Falco Findings** — red vertical markers on the timeline.
+
+If `$times` Liquid filter fails, set `"time"` manually via a Build node or use epoch ms from the Jira step timestamp.

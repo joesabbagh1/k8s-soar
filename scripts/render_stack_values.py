@@ -166,7 +166,7 @@ def build_kube_prometheus_stack_values(obs: dict) -> dict:
             },
             "dashboards": {
                 "k8s-soar": {
-                    "k8s-soar-findings": dashboard,
+                    "k8s-soar-findings": {"json": json.dumps(dashboard)},
                 }
             },
             "alerting": {
