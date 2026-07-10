@@ -1,0 +1,210 @@
+{% python %}
+import json
+import urllib.parse
+
+# Grafana via port-forward on the node (./scripts/port-forward-grafana.sh → :3000).
+GRAFANA_BASE = "http://192.168.0.12:3000"
+
+rule = """$exec.rule""".strip()
+ns = """$exec.output_fields.k8s.ns.name""".strip()
+pod = """$exec.output_fields.k8s.pod.name""".strip()
+priority = """$exec.priority""".strip()
+falco_output = """$exec.output""".strip()
+
+
+def grafana_explore_url(pod_name):
+    expr = f'{{namespace="falco"}}|="{pod_name}"' if pod_name else '{namespace="falco"}|~"K8sSoar"'
+    state = {
+        "datasource": "loki",
+        "queries": [{
+            "refId": "A",
+            "expr": expr,
+            "queryType": "range",
+            "datasource": {"type": "loki", "uid": "loki"},
+        }],
+        "range": {"from": "now-1h", "to": "now"},
+    }
+    return GRAFANA_BASE + "/explore?orgId=1&left=" + urllib.parse.quote(json.dumps(state), safe="")
+
+
+def grafana_dashboard_url():
+    return GRAFANA_BASE + "/d/k8s-soar-findings/k8s-soar-falco-findings?from=now-1h&to=now"
+
+
+explore_url = grafana_explore_url(pod)
+dashboard_url = grafana_dashboard_url()
+
+THREATS = {
+    "K8sSoar Shell In Victim Container": {
+        "scenario": "01",
+        "name": "Shell in victim container",
+        "mitre_id": "T1059",
+        "mitre_technique": "Command and Script Interpreter",
+        "mitre_tactic": "Execution",
+        "attack_vector": "Post-exploitation: adversary spawns an interactive shell (bash/sh) inside a running container to execute commands, explore the filesystem, and stage follow-on actions.",
+        "threat_model": "STRIDE — Tampering (arbitrary process execution), Information Disclosure (filesystem and env enumeration). Kill-chain position: Execution after initial container foothold.",
+        "preventive": "Kyverno require-non-root (audit)",
+        "detective": "Falco: spawned_process + shell binary in workload namespace",
+        "enforce": "—",
+        "soar_response": "Notify (Jira + Slack); no automatic quarantine on this rule",
+    },
+    "K8sSoar Sensitive Credential Access": {
+        "scenario": "03",
+        "name": "Service account token / credential read",
+        "mitre_id": "T1552.007",
+        "mitre_technique": "Unsecured Credentials: Container API",
+        "mitre_tactic": "Credential Access",
+        "attack_vector": "In-cluster adversary reads the mounted Kubernetes service account JWT from /var/run/secrets/kubernetes.io/serviceaccount/token to authenticate to the API server and enable lateral movement or privilege escalation.",
+        "threat_model": "STRIDE — Information Disclosure (credential theft), Elevation of Privilege (API access via stolen token). Kill-chain: Credential Access → Lateral Movement staging.",
+        "preventive": "Kyverno restrict-sa-automount (audit)",
+        "detective": "Falco: open_read on serviceaccount token path",
+        "enforce": "—",
+        "soar_response": "Quarantine pod (security.quarantine=true → Cilium network isolation)",
+    },
+    "K8sSoar Reverse Shell Outbound": {
+        "scenario": "04",
+        "name": "Reverse shell outbound",
+        "mitre_id": "T1059.004",
+        "mitre_technique": "Command and Script Interpreter: Unix Shell",
+        "mitre_tactic": "Execution",
+        "attack_vector": "Compromised container uses shell built-ins to open an outbound TCP connection (/dev/tcp), consistent with reverse-shell staging or C2 callback to an external listener.",
+        "threat_model": "STRIDE — Tampering (command execution), Information Disclosure (exfil channel). ATT&CK: Execution → Command and Control. Tetragon records tcp_connect on labeled pods.",
+        "preventive": "—",
+        "detective": "Falco: shell process + outbound connection; Tetragon TracingPolicy k8s-soar-detect-reverse-shell",
+        "enforce": "Tetragon tcp_connect observability; Cilium quarantine CNP on label",
+        "soar_response": "Quarantine pod (network isolation)",
+    },
+    "K8sSoar Crypto Miner Process": {
+        "scenario": "05",
+        "name": "Crypto miner process",
+        "mitre_id": "T1496",
+        "mitre_technique": "Resource Hijacking",
+        "mitre_tactic": "Impact",
+        "attack_vector": "Adversary runs a process matching known cryptocurrency miner names (xmrig, minerd, cpuminer, ethminer) inside a container to hijack CPU for unauthorized mining.",
+        "threat_model": "STRIDE — Denial of Service (CPU exhaustion), Impact (resource hijacking). Common post-compromise monetization path on exposed workloads.",
+        "preventive": "Kyverno disallow-latest-tag (audit)",
+        "detective": "Falco: spawned_process where proc.name matches miner signatures",
+        "enforce": "Cilium quarantine network policy",
+        "soar_response": "Delete compromised pod",
+    },
+}
+
+DEFAULT = {
+    "scenario": "—",
+    "name": rule or "Unknown Falco rule",
+    "mitre_id": "—",
+    "mitre_technique": "See MITRE ATT&CK Containers matrix",
+    "mitre_tactic": "—",
+    "attack_vector": "Unmapped k8s-soar rule. Review Falco output and threat-matrix.md.",
+    "threat_model": "Map scenario to STRIDE and MITRE ATT&CK (Containers) during triage.",
+    "preventive": "—",
+    "detective": f"Falco rule: {rule}",
+    "enforce": "—",
+    "soar_response": "See Master Responder routing",
+}
+
+t = THREATS.get(rule, DEFAULT)
+
+
+def text_node(text, marks=None):
+    node = {"type": "text", "text": str(text)}
+    if marks:
+        node["marks"] = marks
+    return node
+
+
+def paragraph(*nodes):
+    return {"type": "paragraph", "content": list(nodes)}
+
+
+def heading(level, title):
+    return {
+        "type": "heading",
+        "attrs": {"level": level},
+        "content": [text_node(title)],
+    }
+
+
+def bullet_list(items):
+    return {
+        "type": "bulletList",
+        "content": [
+            {
+                "type": "listItem",
+                "content": [paragraph(text_node(item))],
+            }
+            for item in items
+        ],
+    }
+
+
+mitre_href = (
+    f"https://attack.mitre.org/techniques/{t['mitre_id'].replace('.', '/')}/"
+    if t["mitre_id"].startswith("T")
+    else "https://attack.mitre.org/matrices/enterprise/containers/"
+)
+
+content = [
+    heading(2, "Incident summary"),
+    paragraph(
+        text_node("Falco detected a runtime threat in the k8s-soar security lab."),
+    ),
+    bullet_list([
+        f"Rule: {rule}",
+        f"Priority: {priority or '—'}",
+        f"Namespace: {ns}",
+        f"Pod: {pod}",
+        f"Scenario ID: {t['scenario']} — {t['name']}",
+        f"Falco output: {falco_output or '—'}",
+    ]),
+    heading(2, "Attack vector"),
+    paragraph(text_node(t["attack_vector"])),
+    heading(2, "Threat modeling"),
+    paragraph(text_node(t["threat_model"])),
+    heading(2, "MITRE ATT&CK (Containers)"),
+    bullet_list([
+        f"Tactic: {t['mitre_tactic']}",
+        f"Technique: {t['mitre_id']} — {t['mitre_technique']}",
+        f"Reference: {mitre_href}",
+        "Matrix: https://attack.mitre.org/matrices/enterprise/containers/",
+    ]),
+    paragraph(
+        text_node(f"{t['mitre_id']} — {t['mitre_technique']}", [
+            {"type": "link", "attrs": {"href": mitre_href}},
+        ]),
+    ),
+    heading(2, "Defensive controls (k8s-soar)"),
+    bullet_list([
+        f"Prevent (Kyverno): {t['preventive']}",
+        f"Detect (Falco): {t['detective']}",
+        f"Enforce / observe (Tetragon / Cilium): {t['enforce']}",
+        f"SOAR response: {t['soar_response']}",
+    ]),
+    heading(2, "Forensic logs (Grafana)"),
+    paragraph(
+        text_node("Full Loki history is in Grafana — use the links below (not pasted inline)."),
+    ),
+    paragraph(
+        text_node(
+            f"Open Loki Explore — filter: {{namespace=\"falco\"}}|=\"{pod or 'K8sSoar'}\"",
+            [{"type": "link", "attrs": {"href": explore_url}}],
+        ),
+    ),
+    paragraph(
+        text_node("k8s-soar — Falco Findings dashboard", [
+            {"type": "link", "attrs": {"href": dashboard_url}},
+        ]),
+    ),
+]
+
+body = {
+    "fields": {
+        "project": {"key": "KAN"},
+        "summary": f"SOAR Alert: {rule} — {ns}/{pod}",
+        "description": {"type": "doc", "version": 1, "content": content},
+        "issuetype": {"name": "Task"},
+    }
+}
+
+print(json.dumps(body))
+{% endpython %}
