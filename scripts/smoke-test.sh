@@ -15,6 +15,9 @@ set -euo pipefail
 NS="k8s-soar-smoke-$(date +%s)"
 SOAR_NS="${K8S_SOAR_NAMESPACE:-k8s-soar}"
 KEEP=false; [[ "${1:-}" == "--keep" ]] && KEEP=true
+RULE="K8sSoar Service Account Token Read By Shell Tool"
+# Same slug the Sensor writes into the k8s-soar.io/rule label.
+RULE_LABEL=$(tr '[:upper:]' '[:lower:]' <<<"$RULE" | sed -E 's/[^a-z0-9]+/-/g')
 
 step() { echo -e "\n\033[1m==> $*\033[0m"; }
 fail() { echo -e "\033[0;31mFAIL\033[0m $*"; exit 1; }
@@ -29,12 +32,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Printed when a step times out: where the case got stuck.
+diagnose() {
+  [[ -n "${WF:-}" ]] || return 0
+  echo "    case ${WF}: $(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase} {.status.message}' 2>/dev/null)"
+  kubectl get pods -n "$SOAR_NS" -l "workflows.argoproj.io/workflow=${WF}" \
+    -o custom-columns='STEP:.metadata.annotations.workflows\.argoproj\.io/node-name,STATUS:.status.containerStatuses[*].state.*.reason,IMAGE:.spec.containers[*].image' \
+    2>/dev/null | sed 's/^/    /'
+}
+
 wait_for() { # wait_for <seconds> <description> <command...>
   local timeout=$1 what=$2; shift 2
   for _ in $(seq "$timeout"); do
     if "$@" >/dev/null 2>&1; then return 0; fi
     sleep 1
   done
+  diagnose
   fail "timed out after ${timeout}s waiting for: ${what}"
 }
 
@@ -70,7 +83,7 @@ kubectl rollout status -n "$NS" deploy/victim --timeout=120s >/dev/null
 POD=$(kubectl get pod -n "$NS" -l app=victim -o jsonpath='{.items[0].metadata.name}')
 pass "pod ${POD} running"
 
-step "Triggering 'K8sSoar Service Account Token Read By Shell Tool'"
+step "Triggering '${RULE}'"
 kubectl exec -n "$NS" "$POD" -- sh -c 'cat /var/run/secrets/kubernetes.io/serviceaccount/token >/dev/null' || true
 
 step "1. Falco alert"
@@ -79,9 +92,11 @@ wait_for 60 "Falco alert for ${POD}" \
 pass "Falco reported the event"
 
 step "2. Case workflow"
-wait_for 90 "workflow for ${POD}" \
-  sh -c "kubectl get workflows -n ${SOAR_NS} -l k8s-soar.io/pod=${POD:0:63} -o name | grep -q ."
-WF=$(kubectl get workflows -n "$SOAR_NS" -l "k8s-soar.io/pod=${POD:0:63}" -o jsonpath='{.items[0].metadata.name}')
+# Other rules may open their own cases for the same pod; follow the one we triggered.
+CASE_SELECTOR="k8s-soar.io/pod=${POD:0:63},k8s-soar.io/rule=${RULE_LABEL:0:63}"
+wait_for 90 "case for '${RULE}' on ${POD}" \
+  sh -c "kubectl get workflows -n ${SOAR_NS} -l '${CASE_SELECTOR}' -o name | grep . >/dev/null"
+WF=$(kubectl get workflows -n "$SOAR_NS" -l "$CASE_SELECTOR" -o jsonpath='{.items[0].metadata.name}')
 pass "case ${WF} created"
 
 step "3. Quarantine + orphaning"

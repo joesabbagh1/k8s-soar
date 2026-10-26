@@ -82,6 +82,15 @@
   condition: (container.image.repository pmatch (k8s_soar_allowed_images))
 
 # A container in a namespace we monitor (not the platform itself).
+# Install/upgrade sub-commands (apk add, apt-get install, pip install, rpm -i...),
+# as opposed to queries like `apk manifest` or `dpkg -S`.
+- macro: k8s_soar_package_install
+  condition: >
+    proc.args contains "install" or proc.args contains "add "
+    or proc.args endswith " add" or proc.args contains "upgrade"
+    or proc.args contains "update" or proc.args contains "-i "
+    or proc.args contains "-U " or proc.args contains "--force"
+
 - macro: k8s_soar_workload
   condition: >
     container

@@ -57,9 +57,13 @@
 
 - rule: K8sSoar Package Manager In Running Container
   desc: >
-    A package manager ran inside a running container. Images should be
-    immutable; installing packages at runtime is typical of attacker tooling.
-  condition: spawned_process and k8s_soar_workload and proc.name in (k8s_soar_package_managers)
+    A package manager installed or upgraded software inside a running
+    container. Images should be immutable; installing packages at runtime is
+    typical of attacker tooling. Read-only queries are ignored (nginx:alpine's
+    entrypoint runs `apk manifest nginx` on every start).
+  condition: >
+    spawned_process and k8s_soar_workload and proc.name in (k8s_soar_package_managers)
+    and k8s_soar_package_install
   output: >
     Package manager executed in running container
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname

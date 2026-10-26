@@ -21,7 +21,7 @@ Response column: **contain** = quarantined immediately, then triage + notify + a
 | K8sSoar API Server Access From Shell Tool | Error | T1613 | notify | scripted health checks with curl |
 | K8sSoar Write Below Binary Directory | Error | T1036 | notify | images that self-update |
 | K8sSoar Terminal Shell In Container | Warning | T1059 | notify | interactive debugging |
-| K8sSoar Package Manager In Running Container | Warning | T1072 | notify | images installing packages at start (anti-pattern) |
+| K8sSoar Package Manager In Running Container | Warning | T1072 | notify | images installing packages at start (anti-pattern); queries such as `apk manifest` are ignored |
 | K8sSoar Cloud Metadata Access | Warning | T1552.005 | notify | cloud SDKs (IRSA, workload identity) |
 | K8sSoar Network Recon Tool | Warning | T1046 | notify | network debug images (netshoot) |
 | K8sSoar Kubernetes Client In Container | Warning | T1613 | notify | CI runners, operators with kubectl |
