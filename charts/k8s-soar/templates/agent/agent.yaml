@@ -1,0 +1,149 @@
+{{- if .Values.ai.enabled }}
+# AI triage agent. Read-only: it investigates and recommends; the workflow's
+# approval gate is the only path to an action.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "k8s-soar.agentSA" . }}
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-soar-agent
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods, events]
+    verbs: [get, list]
+  {{- if .Values.ai.sendLogs }}
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  {{- end }}
+  - apiGroups: [apps]
+    resources: [replicasets, deployments, daemonsets, statefulsets]
+    verbs: [get]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-soar-agent
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-soar-agent
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-soar.agentSA" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soar-agent
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+    app.kubernetes.io/name: soar-agent
+spec:
+  replicas: {{ .Values.ai.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: soar-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: soar-agent
+        app.kubernetes.io/part-of: k8s-soar
+      annotations:
+        checksum/config: {{ toJson .Values.ai | sha256sum | trunc 16 }}
+    spec:
+      serviceAccountName: {{ include "k8s-soar.agentSA" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: {{ include "k8s-soar.image" (dict "root" . "name" .Values.ai.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: soar-config
+          env:
+            - name: AI_PROVIDER
+              value: {{ .Values.ai.provider | quote }}
+            - name: AI_MODEL
+              value: {{ .Values.ai.model | quote }}
+            - name: AI_BASE_URL
+              value: {{ .Values.ai.baseUrl | quote }}
+            - name: AI_MAX_TOOL_CALLS
+              value: {{ .Values.ai.maxToolCalls | quote }}
+            - name: AI_MAX_TOKENS
+              value: {{ .Values.ai.maxTokens | quote }}
+            - name: AI_TIMEOUT_SECONDS
+              value: {{ .Values.ai.timeoutSeconds | quote }}
+            - name: AI_SEND_LOGS
+              value: {{ .Values.ai.sendLogs | quote }}
+            - name: AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ai.apiKeySecret.name }}
+                  key: {{ .Values.ai.apiKeySecret.key }}
+                  optional: true   # e.g. Ollama needs no key
+            - name: HOME
+              value: /tmp
+            {{- with .Values.ai.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.ai.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soar-agent
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: soar-agent
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}
