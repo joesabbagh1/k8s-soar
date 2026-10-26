@@ -1,0 +1,18 @@
+{{- if and .Values.observability.enabled .Values.observability.dashboards }}
+{{- range $path, $_ := .Files.Glob "files/dashboards/*.json" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8s-soar-dashboard-{{ base $path | trimSuffix ".json" | replace "k8s-soar-" "" }}
+  namespace: {{ $.Values.observability.namespace }}
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+    grafana_dashboard: "1"
+  annotations:
+    grafana_folder: k8s-soar
+data:
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+{{- end }}
+{{- end }}

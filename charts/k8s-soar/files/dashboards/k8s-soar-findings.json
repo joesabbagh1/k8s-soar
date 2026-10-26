@@ -15,7 +15,9 @@
         "target": {
           "limit": 100,
           "matchAny": false,
-          "tags": ["soar", "security", "incident"],
+          "tags": [
+            "k8s-soar"
+          ],
           "type": "tags"
         }
       }
@@ -107,12 +109,12 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (priority) (count_over_time({namespace=~\"falco|monitoring\"} |~ \"K8sSoar|k8s-soar\" [5m]))",
+          "expr": "sum by (rule) (count_over_time({namespace=\"falco\"} |~ \"K8sSoar\" | json | __error__=\"\" [5m]))",
           "legendFormat": "{{priority}}",
           "refId": "A"
         }
       ],
-      "title": "K8sSoar findings (5m rate by priority)",
+      "title": "k8s-soar findings by rule (5m)",
       "type": "timeseries"
     },
     {
@@ -212,7 +214,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{namespace=~\"falco|monitoring\"} |~ \"K8sSoar|k8s-soar|Reverse shell|Crypto miner|Sensitive credential|Shell spawned\"",
+          "expr": "{namespace=\"falco\"} |~ \"K8sSoar\"",
           "refId": "A"
         }
       ],
@@ -236,7 +238,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "k8s-soar — Falco Findings",
+  "title": "k8s-soar \u2014 Findings",
   "uid": "k8s-soar-findings",
   "version": 1
 }
