@@ -1,126 +1,115 @@
 # k8s-soar
 
-> **Kubernetes Security Orchestration, Automation & Response**
-> Bare-metal bootstrap — kubeadm + Cilium + Falco + Tetragon + Kyverno
+> Kubernetes runtime **detection → automated containment → AI-assisted triage → human-approved response**.
+> Falco + Tetragon + Kyverno + Cilium, orchestrated by Argo Events/Workflows, with an optional LLM triage agent (bring your own provider).
 
-[![Publish Helm Chart](https://github.com/joesabbagh1/k8s-soar/actions/workflows/helm-publish.yml/badge.svg)](https://github.com/joesabbagh1/k8s-soar/actions/workflows/helm-publish.yml)
+[![CI](https://github.com/joesabbagh1/k8s-soar/actions/workflows/ci.yml/badge.svg)](https://github.com/joesabbagh1/k8s-soar/actions/workflows/ci.yml)
 
 ---
 
-## Overview
+## What happens when an attack is detected
 
-`k8s-soar` provisions a complete security stack on **bare-metal Linux servers** from scratch:
+```mermaid
+flowchart LR
+  subgraph Detect
+    F[Falco<br/>syscall rules] --> SK[falcosidekick]
+    T[Tetragon<br/>kernel events] --> PT[Promtail]
+    K[Kyverno<br/>admission] -.PolicyReports.-> G
+  end
+  SK -->|all findings| L[(Loki)]
+  PT --> L
+  SK -->|soar_* tagged + Critical| ES[Argo EventSource<br/>webhook]
+  AM[Alertmanager] -->|critical| ES
+  ES --> EB[(EventBus<br/>JetStream)] --> S[Sensor<br/>filter + rate limit]
+  S --> W
 
-1. **Ansible** — OS prep, kubeadm cluster, Helm install
-2. **Cilium** — eBPF CNI, network policies, Hubble
-3. **Falco** — runtime threat detection (modern eBPF) + custom rules
-4. **Tetragon** — kernel-level enforcement policies
-5. **Kyverno** — admission policies-as-code
-6. **SOAR responder** — Detect → Isolate via falcosidekick webhook (enabled by default)
-7. **Observability** — Grafana + Prometheus + Loki for findings dashboards and alerts (enabled by default)
+  subgraph W[Case = one Argo Workflow]
+    direction TB
+    g[1 guard<br/>route + dedup] --> c[2 contain<br/>quarantine label<br/>+ detach pod] --> e[3 enrich<br/>pod, logs, events,<br/>Falco + Tetragon history]
+    e --> a[4 triage<br/>AI verdict] --> n[5 notify<br/>Slack, Jira, Grafana] --> ap[6 approve<br/>analyst picks action] --> x[7 act<br/>delete / scale 0 / release]
+  end
 
-## Prerequisites
-
-**For Bare-Metal (From Scratch):**
-- Bare-metal or VM servers: Ubuntu 22.04+, kernel ≥ 5.10
-- Ansible ≥ 2.14 on operator machine
-- SSH + sudo access to all nodes
-
-## Install: One-command (Bare-metal from scratch)
-
-```bash
-cd ansible
-chmod +x setup.sh
-./setup.sh
+  c -->|label| CNP[Cilium quarantine<br/>policy]
+  a <-->|read-only tools| AG[soar-agent<br/>LiteLLM: Anthropic, OpenAI,<br/>Gemini, Bedrock, Ollama...]
+  L --> G[Grafana]
 ```
 
-This automatically provisions the cluster and security stack. **Attack scenarios are not run** — execute those manually when you are ready (see below).
+Concretely, for `kubectl exec` into a pod followed by `cat /var/run/secrets/.../token`:
 
-## Run attack scenarios (Separated Repository)
+1. **Falco** matches `K8sSoar Service Account Token Read By Shell Tool` (tags `soar_contain`, `T1552.007`).
+2. **falcosidekick** posts the JSON event to the in-cluster webhook; the **Sensor** opens a case: a Workflow named `k8ssoar-service-account-token-read-by-shell-tool-xxxxx`, labelled with the namespace and pod.
+3. **guard** checks the namespace isn't a platform namespace, the pod isn't already quarantined, and the same alert wasn't handled in the last 10 minutes (atomic claim on the pod).
+4. **contain** labels the pod `security.quarantine=true` → the Cilium policy cuts all its traffic (kubelet probes still pass, so the process stays alive for forensics), and removes its ReplicaSet selector labels → the Deployment schedules a clean replacement and Services stop routing to it. Typical time-to-contain: a few seconds.
+5. **enrich** collects pod spec, owner chain, events, recent logs, other Falco alerts and Tetragon events for that pod.
+6. **triage** (optional) asks the AI agent for a verdict: `true_positive | benign | needs_review`, confidence, evidence and recommended next action.
+7. **notify** posts to Slack, opens a Jira issue (MITRE mapping, evidence, AI summary, links) and annotates Grafana — each only if configured.
+8. **approve** pauses the case. An analyst opens it in the Argo UI and resumes with `delete-pod`, `scale-to-zero`, `release-quarantine` or `none`. Nothing destructive happens without a human.
 
-Attack scenarios are now housed in a separate repository to maintain `k8s-soar` as a clean, deployable security solution. 
-Please refer to the `k8s-soar-scenarios` repository to run simulations and trigger the security stack.
+Every step's inputs, outputs and logs are visible in the Argo UI (`make argo-ui`). `make cases` lists them in the terminal.
 
-## Post-Install: Shuffle SOAR
+## Quick start
 
-Shuffle is automatically installed and configured alongside the security stack! 
-
-During installation, the script automatically:
-1. Created an admin account (`admin` / `admin_password123!`).
-2. Imported the default `playbooks/master-responder.json` workflow.
-3. Hooked the workflow directly into Falco's webhook endpoint.
-
-If you wish to view or modify your Playbooks, simply access the UI:
-```bash
-kubectl port-forward svc/shuffle-frontend -n shuffle 3001:3000
-```
-Open `http://localhost:3001` in your browser.
-
-## Observability (Grafana + Prometheus + Loki)
-
-The observability stack is **enabled by default** so you can visualize Falco findings, explore alert history, and configure Grafana alerts.
-
-| Component | Role |
-|-----------|------|
-| **Prometheus** | Scrapes Falco / falcosidekick metrics (ServiceMonitors) |
-| **Loki** | Stores Falco JSON alerts (via falcosidekick + Promtail pod logs) |
-| **Grafana** | `k8s-soar — Falco Findings` dashboard + provisioned Loki alert |
+**Bare metal, from scratch** (Ubuntu 22.04+, kernel ≥ 5.10):
 
 ```bash
-./scripts/port-forward-grafana.sh
-# http://127.0.0.1:3000 — user admin, password k8s-soar (change in values.yaml)
+cd deploy/ansible && ./setup.sh        # kubeadm cluster + full stack
 ```
 
-**Do you need Loki?** Prometheus gives you rates and counters; **Loki is what makes full finding text searchable** in Grafana (rule name, pod, namespace, output message). Promtail also captures responder/sidekick logs for SOAR correlation.
+**Existing cluster** (no CNI yet, or already Cilium — see [operations](docs/operations.md)):
 
-To disable observability:
+```bash
+make preflight                         # tools + cluster checks
+cp deploy/secrets.env.example deploy/secrets.env   # optional: Slack, Jira, AI key
+make deploy                            # helmfile apply (ENV=lab adds the security-lab namespace)
+make status                            # health check
+make smoke-test                        # trigger a rule, verify containment end to end
+```
+
+**Turn on AI triage:**
 
 ```yaml
-# values.yaml
-observability:
-  enabled: false
+# deploy/profiles/default.yaml
+k8sSoar:
+  ai:
+    enabled: true
+    provider: anthropic        # anthropic | openai | gemini | azure | bedrock | ollama | ...
+    model: claude-sonnet-5-5
 ```
 
-Or: `K8S_SOAR_ENABLE_OBSERVABILITY=0 ./ansible/setup.sh`
-
-## Manual Helm install (kubeadm already done)
-
 ```bash
-./ansible/setup.sh
+make ai-key KEY=<your provider key> && make deploy
 ```
 
-## What is automated vs manual
+## Repository layout
 
-| Step | Automated by |
-|------|----------------|
-| OS + kubeadm cluster | Ansible |
-| Cilium / Falco / Tetragon / Kyverno | Split Helm releases (`ansible/setup.sh`) |
-| Grafana / Prometheus / Loki | Split Helm releases (`monitoring` namespace) |
-| Falco custom rules | `render-helm-values.sh` overlay |
-| Kyverno + Tetragon + quarantine policies | `scripts/apply-policies.sh` |
-| SOAR responder + webhook | On by default; disable with `enable_soar: false` or `K8S_SOAR_ENABLE_SOAR=0` |
-| Grafana dashboards + Loki alerts | On by default; `./scripts/port-forward-grafana.sh` |
-| Observability stack | On by default; disable with `observability.enabled: false` or `K8S_SOAR_ENABLE_OBSERVABILITY=0` |
-| Attack scenario execution | **k8s-soar-scenarios repository** |
-| Kyverno Enforce mode | Optional — policies ship in Audit mode |
-| Inventory / server IPs | One-time manual edit |
-
-To update policies without a full reinstall: `kubectl apply -k policies/`
-
-## Verify
-
-```bash
-./scripts/verify-stack.sh
-kubectl get cpol -A
+```text
+deploy/
+  ansible/              kubeadm bootstrap (cluster only) → then runs helmfile
+  helmfile.yaml.gotmpl  every Helm release, pinned versions, install order
+  profiles/             the settings you change (default.yaml, lab.yaml)
+  values/               per-component Helm values (Cilium, Falco, Argo, ...)
+charts/k8s-soar/        k8s-soar's own resources
+  files/falco-rules/    detection rules by MITRE tactic
+  templates/detection/  Kyverno + Tetragon policies, Falco rules ConfigMap
+  templates/response/   quarantine policy, Argo EventSource/Sensor/WorkflowTemplate, RBAC
+  templates/agent/      AI triage agent
+services/soar/          Python: workflow steps (soar-actions) + AI agent (soar-agent)
+scripts/                verify, smoke test, secrets, preflight, lab helpers
+docs/                   architecture, detection catalog, response, AI agent, operations
 ```
 
 ## Documentation
 
-- [Ansible bootstrap](./ansible/README.md)
-- [Architecture](./docs/thesis/ARCHITECTURE.md)
-- [Observability](./docs/OBSERVABILITY.md)
-- [Threat matrix](./scenarios/threat-matrix.md)
-- [SOAR limitations](./docs/thesis/SOAR-LIMITATIONS.md)
+| | |
+|---|---|
+| [Architecture](docs/architecture.md) | components, data flow, design decisions |
+| [Detection catalog](docs/detection-catalog.md) | every rule/policy, MITRE mapping, response, known false positives |
+| [Response playbook](docs/response.md) | the case workflow, modes, approvals, integrations |
+| [AI agent](docs/ai-agent.md) | providers, configuration, safety model |
+| [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
+| [Thesis](docs/thesis/) | methodology, reproducibility, limitations |
+
+Attack scenarios live in the separate `k8s-soar-scenarios` repository (`make deploy ENV=lab` prepares the target namespace).
 
 ## License
 
