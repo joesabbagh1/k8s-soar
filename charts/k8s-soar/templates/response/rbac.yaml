@@ -1,0 +1,117 @@
+{{- if .Values.response.enabled }}
+# --- Responder: identity of the workflow step pods -----------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "k8s-soar.responderSA" . }}
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+---
+# Cluster-wide because attacks can land in any namespace. Limited to what the
+# playbook does; trusted namespaces are additionally blocked by the
+# k8s-soar-responder-scope Kyverno policy and by the code itself.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-soar-responder
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, patch, delete]
+  - apiGroups: [""]
+    resources: [pods/log, events]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [replicasets, daemonsets, deployments, statefulsets]
+    verbs: [get]
+  - apiGroups: [apps]
+    resources: [deployments/scale, statefulsets/scale, replicasets/scale]
+    verbs: [patch]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-soar-responder
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-soar-responder
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-soar.responderSA" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Argo executor needs to report step results.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: soar-workflow-executor
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [workflowtaskresults]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soar-workflow-executor
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: soar-workflow-executor
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s-soar.responderSA" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# --- Sensor: may only submit workflows from our templates -------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: soar-sensor
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: soar-sensor
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [argoproj.io]
+    resources: [workflows]
+    verbs: [create, get, list, watch]
+  - apiGroups: [argoproj.io]
+    resources: [workflowtemplates]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: soar-sensor
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: soar-sensor
+subjects:
+  - kind: ServiceAccount
+    name: soar-sensor
+    namespace: {{ .Release.Namespace }}
+{{- end }}

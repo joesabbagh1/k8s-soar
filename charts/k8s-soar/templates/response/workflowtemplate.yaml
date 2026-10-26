@@ -1,0 +1,251 @@
+{{- if .Values.response.enabled }}
+# One Workflow per case. Open the Argo UI (make argo-ui) to watch each step,
+# read its logs and outputs, and approve follow-up actions.
+#
+#   guard -> case[ contain -> enrich -> triage -> notify -> review[ approve -> act ] ]
+#
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: falco-response
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+  annotations:
+    workflows.argoproj.io/description: >-
+      k8s-soar case: decide, quarantine, collect evidence, AI triage, notify,
+      then wait for an analyst to approve any destructive follow-up.
+spec:
+  entrypoint: respond
+  serviceAccountName: {{ include "k8s-soar.responderSA" . }}
+  activeDeadlineSeconds: {{ .Values.response.activeDeadlineSeconds }}
+  ttlStrategy:
+    secondsAfterCompletion: {{ .Values.response.workflowTTLSeconds }}
+  podGC:
+    strategy: OnWorkflowCompletion
+    deleteDelayDuration: 24h
+  podMetadata:
+    labels:
+      app.kubernetes.io/part-of: k8s-soar
+      app.kubernetes.io/component: responder
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  volumes:
+    - name: outputs
+      emptyDir: {}
+  arguments:
+    parameters:
+      - name: alert
+        description: Raw Falco (or Alertmanager) event JSON
+  metrics:
+    prometheus:
+      - name: k8s_soar_cases_total
+        help: Response workflows by final status
+        labels:
+          - key: status
+            value: "{{`{{workflow.status}}`}}"
+        counter:
+          value: "1"
+  templates:
+    # Steps whose outputs are used later always run (and no-op when not
+    # needed), so no step ever references outputs of a skipped step.
+    - name: respond
+      steps:
+        - - name: guard
+            template: guard
+        - - name: case
+            template: case
+            when: "'{{`{{steps.guard.outputs.parameters.action}}`}}' != 'skip'"
+            arguments:
+              parameters:
+                - name: decision
+                  value: "{{`{{steps.guard.outputs.parameters.decision}}`}}"
+                - name: action
+                  value: "{{`{{steps.guard.outputs.parameters.action}}`}}"
+                - name: namespace
+                  value: "{{`{{steps.guard.outputs.parameters.namespace}}`}}"
+                - name: pod
+                  value: "{{`{{steps.guard.outputs.parameters.pod}}`}}"
+
+    - name: case
+      inputs:
+        parameters:
+          - name: decision
+          - name: action
+          - name: namespace
+          - name: pod
+      steps:
+        - - name: contain
+            template: contain
+            continueOn:
+              failed: true
+            arguments:
+              parameters:
+                - name: action
+                  value: "{{`{{inputs.parameters.action}}`}}"
+        - - name: enrich
+            template: enrich
+        - - name: triage
+            template: triage
+            arguments:
+              parameters:
+                - name: context
+                  value: "{{`{{steps.enrich.outputs.parameters.context}}`}}"
+                - name: decision
+                  value: "{{`{{inputs.parameters.decision}}`}}"
+        - - name: notify
+            template: notify
+            continueOn:
+              failed: true
+            arguments:
+              parameters:
+                - name: decision
+                  value: "{{`{{inputs.parameters.decision}}`}}"
+                - name: contained
+                  value: "{{`{{steps.contain.outputs.parameters.result}}`}}"
+                - name: verdict
+                  value: "{{`{{steps.triage.outputs.parameters.verdict}}`}}"
+        {{- if .Values.response.approvalGate }}
+        - - name: review
+            template: review
+            when: "'{{`{{inputs.parameters.pod}}`}}' != ''"
+            arguments:
+              parameters:
+                - name: recommended
+                  value: "{{`{{steps.triage.outputs.parameters.recommended}}`}}"
+                - name: namespace
+                  value: "{{`{{inputs.parameters.namespace}}`}}"
+                - name: pod
+                  value: "{{`{{inputs.parameters.pod}}`}}"
+
+    - name: review
+      inputs:
+        parameters:
+          - name: recommended
+          - name: namespace
+          - name: pod
+      steps:
+        - - name: approve
+            template: approve
+            arguments:
+              parameters:
+                - name: recommended
+                  value: "{{`{{inputs.parameters.recommended}}`}}"
+        - - name: act
+            template: act
+            when: "'{{`{{steps.approve.outputs.parameters.action}}`}}' != 'none'"
+            arguments:
+              parameters:
+                - name: action
+                  value: "{{`{{steps.approve.outputs.parameters.action}}`}}"
+                - name: namespace
+                  value: "{{`{{inputs.parameters.namespace}}`}}"
+                - name: pod
+                  value: "{{`{{inputs.parameters.pod}}`}}"
+        {{- end }}
+
+    # 1. Route the alert and claim the pod (dedup). Outputs action=contain|notify|skip.
+    - name: guard
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "guard" "--alert" "{{workflow.parameters.alert}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "decision" | nindent 10 }}
+          - name: action
+            valueFrom:
+              path: /tmp/outputs/action
+              default: skip
+          - name: namespace
+            valueFrom:
+              path: /tmp/outputs/namespace
+              default: ""
+          - name: pod
+            valueFrom:
+              path: /tmp/outputs/pod
+              default: ""
+
+    # 2. Quarantine label + orphan from controller (no-op unless action=contain).
+    #    Logs time_to_contain_seconds=<n> (Grafana "Response" dashboard reads it from Loki).
+    - name: contain
+      inputs:
+        parameters:
+          - name: action
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "contain" "--alert" "{{workflow.parameters.alert}}" "--case" "{{workflow.name}}" "--action" "{{inputs.parameters.action}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "result" | nindent 10 }}
+
+    # 3. Read-only evidence: pod spec, owners, events, logs, Falco + Tetragon history.
+    - name: enrich
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "enrich" "--alert" "{{workflow.parameters.alert}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "context" | nindent 10 }}
+
+    # 4. AI verdict (returns 'unavailable' when ai.enabled=false or the provider fails).
+    - name: triage
+      inputs:
+        parameters:
+          - name: context
+          - name: decision
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "triage" "--alert" "{{workflow.parameters.alert}}" "--context" "{{inputs.parameters.context}}" "--decision" "{{inputs.parameters.decision}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "verdict" | nindent 10 }}
+          - name: recommended
+            valueFrom:
+              path: /tmp/outputs/recommended
+              default: none
+
+    # 5. Slack / Jira / Grafana annotation (each only if configured).
+    - name: notify
+      inputs:
+        parameters:
+          - name: decision
+          - name: contained
+          - name: verdict
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "notify" "--alert" "{{workflow.parameters.alert}}" "--decision" "{{inputs.parameters.decision}}" "--contained" "{{inputs.parameters.contained}}" "--verdict" "{{inputs.parameters.verdict}}" "--workflow" "{{workflow.name}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "result" | nindent 10 }}
+    {{- if .Values.response.approvalGate }}
+
+    # 6. Human approval. In the Argo UI: open the case -> "approve" node -> RESUME,
+    #    pick an action (default 'none'). CLI: argo resume <case> -n {{ .Release.Namespace }}
+    - name: approve
+      inputs:
+        parameters:
+          - name: recommended
+          - name: action
+            default: none
+            enum: [none, delete-pod, scale-to-zero, release-quarantine]
+            description: >-
+              AI recommendation: {{`{{inputs.parameters.recommended}}`}}.
+              Choose the action to run on the pod, or 'none' to close the case.
+      suspend: {}
+      outputs:
+        parameters:
+          - name: action
+            valueFrom:
+              supplied: {}
+
+    # 7. Run the approved action.
+    - name: act
+      inputs:
+        parameters:
+          - name: action
+          - name: namespace
+          - name: pod
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "act" "--action" "{{inputs.parameters.action}}" "--namespace" "{{inputs.parameters.namespace}}" "--pod" "{{inputs.parameters.pod}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "result" | nindent 10 }}
+    {{- end }}
+{{- end }}

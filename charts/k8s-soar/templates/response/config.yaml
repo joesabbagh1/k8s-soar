@@ -1,0 +1,22 @@
+{{- if .Values.response.enabled }}
+# Settings shared by the workflow steps and the agent (read by k8s_soar.config).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soar-config
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+data:
+  SOAR_MODE: {{ .Values.response.mode | quote }}
+  SOAR_QUARANTINE_LABEL_KEY: {{ .Values.quarantine.labelKey | quote }}
+  SOAR_QUARANTINE_LABEL_VALUE: {{ .Values.quarantine.labelValue | quote }}
+  SOAR_ORPHAN_FROM_CONTROLLER: {{ .Values.response.orphanFromController | quote }}
+  SOAR_TRUSTED_NAMESPACES: {{ join "," .Values.trustedNamespaces | quote }}
+  SOAR_DEDUP_MINUTES: {{ .Values.response.dedupMinutes | quote }}
+  SOAR_AGENT_URL: {{ include "k8s-soar.agentUrl" . | quote }}
+  SOAR_LOKI_URL: {{ .Values.integrations.lokiUrl | quote }}
+  SOAR_GRAFANA_URL: {{ .Values.integrations.grafanaUrl | quote }}
+  SOAR_GRAFANA_EXTERNAL_URL: {{ .Values.integrations.grafanaExternalUrl | quote }}
+  SOAR_ARGO_EXTERNAL_URL: {{ .Values.integrations.argoExternalUrl | quote }}
+  JIRA_ISSUE_TYPE: {{ .Values.integrations.jiraIssueType | quote }}
+{{- end }}
