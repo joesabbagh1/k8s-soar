@@ -1,7 +1,8 @@
 # Response playbook
 
 A **case** is one Argo Workflow created from the `falco-response` WorkflowTemplate in the
-`k8s-soar` namespace. Watch them with `make argo-ui` (UI) or `make cases` (terminal).
+`k8s-soar` namespace. Analysts work them in the [console](console.md) (`make console`); the Argo
+UI (`make argo-ui`) shows raw step inputs/outputs/logs, and `make cases` lists them in the terminal.
 
 ```text
 guard ──► case[ contain ─► enrich ─► triage ─► notify ─► review[ approve ─► act ] ]
@@ -39,9 +40,11 @@ guard ──► case[ contain ─► enrich ─► triage ─► notify ─► r
 
 ## Approvals
 
-In the Argo UI open the case → click the **approve** node → **RESUME in the node panel** (not
-the toolbar one) → pick the action. The AI recommendation is on the **triage** node
-(INPUTS/OUTPUTS → `recommended`) and in the Slack/Jira message. CLI equivalent:
+In the [console](console.md): open the case → **Your decision** → pick an action → **Submit
+decision**. The page shows the context, and the AI recommendation is marked.
+
+Argo UI fallback: open the case → click the **approve** node → **RESUME in the node panel** (not
+the toolbar one) → pick the action. CLI equivalent:
 
 ```bash
 argo node set <case> -n k8s-soar --node-field-selector displayName=approve \

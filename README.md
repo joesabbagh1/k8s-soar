@@ -28,6 +28,7 @@ flowchart LR
     g[1 guard<br/>route + dedup] --> c[2 contain<br/>quarantine label<br/>+ detach pod] --> e[3 enrich<br/>pod, logs, events,<br/>Falco + Tetragon history]
     e --> a[4 triage<br/>AI verdict] --> n[5 notify<br/>Slack, Jira, Grafana] --> ap[6 approve<br/>analyst picks action] --> x[7 act<br/>delete / scale 0 / release]
   end
+  UI[soar-console<br/>case page + decision] -->|read + resume<br/>Argo Server API| W
 
   c -->|label| CNP[Cilium quarantine<br/>policy]
   a <-->|read-only tools| AG[soar-agent<br/>LiteLLM: Anthropic, OpenAI,<br/>Gemini, Bedrock, Ollama...]
@@ -43,9 +44,9 @@ Concretely, for `kubectl exec` into a pod followed by `cat /var/run/secrets/.../
 5. **enrich** collects pod spec, owner chain, events, recent logs, other Falco alerts and Tetragon events for that pod.
 6. **triage** (optional) asks the AI agent for a verdict: `true_positive | benign | needs_review`, confidence, evidence and recommended next action.
 7. **notify** posts to Slack, opens a Jira issue (MITRE mapping, evidence, AI summary, links) and annotates Grafana — each only if configured.
-8. **approve** pauses the case. An analyst opens it in the Argo UI and resumes with `delete-pod`, `scale-to-zero`, `release-quarantine` or `none`. Nothing destructive happens without a human.
+8. **approve** pauses the case. In the **console** (`make console`), an analyst sees what happened, what k8s-soar already did, the evidence and the AI verdict, then picks **Delete pod**, **Scale to zero**, **False positive — release** or **Close**. Nothing destructive happens without a human.
 
-Every step's inputs, outputs and logs are visible in the Argo UI (`make argo-ui`). `make cases` lists them in the terminal.
+The console is the analyst view ([docs](docs/console.md)). Argo's UI (`make argo-ui`) still shows each step's raw inputs, outputs and logs for debugging, and `make cases` lists cases in the terminal.
 
 ## Quick start
 
@@ -63,6 +64,7 @@ cp deploy/secrets.env.example deploy/secrets.env   # optional: Slack, Jira, AI k
 make deploy                            # helmfile apply (ENV=lab adds the security-lab namespace)
 make status                            # health check
 make smoke-test                        # trigger a rule, verify containment end to end
+make console                           # review and decide cases
 ```
 
 **Turn on AI triage:**
@@ -92,8 +94,9 @@ charts/k8s-soar/        k8s-soar's own resources
   files/falco-rules/    detection rules by MITRE tactic
   templates/detection/  Kyverno + Tetragon policies, Falco rules ConfigMap
   templates/response/   quarantine policy, Argo EventSource/Sensor/WorkflowTemplate, RBAC
+  templates/console/    analyst console
   templates/agent/      AI triage agent
-services/soar/          Python: workflow steps (soar-actions) + AI agent (soar-agent)
+services/soar/          Python: workflow steps (soar-actions), console (soar-console), AI agent (soar-agent)
 scripts/                verify, smoke test, secrets, preflight, lab helpers
 docs/                   architecture, detection catalog, response, AI agent, operations
 ```
@@ -105,6 +108,7 @@ docs/                   architecture, detection catalog, response, AI agent, ope
 | [Architecture](docs/architecture.md) | components, data flow, design decisions |
 | [Detection catalog](docs/detection-catalog.md) | every rule/policy, MITRE mapping, response, known false positives |
 | [Response playbook](docs/response.md) | the case workflow, modes, approvals, integrations |
+| [Analyst console](docs/console.md) | case list, case page, decisions, identity |
 | [AI agent](docs/ai-agent.md) | providers, configuration, safety model |
 | [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
 | [Thesis](docs/thesis/) | methodology, reproducibility, limitations |

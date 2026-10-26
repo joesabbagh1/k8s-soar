@@ -37,7 +37,8 @@ make deploy-soar          # only rules/policies/response/agent — fast
 make status               # health check
 make cases                # recent cases
 make quarantined          # quarantined pods
-make argo-ui / grafana    # UIs (argo-ui listens on all interfaces; cases at /workflows/k8s-soar)
+make console             # analyst console: review and decide cases (port 8081)
+make argo-ui / grafana    # Argo (raw workflow view) and Grafana; both listen on all interfaces
 ```
 
 **Upgrading a component:** bump its `version:` in `deploy/helmfile.yaml.gotmpl`, read the
@@ -67,5 +68,6 @@ cluster alerts to the response pipeline as notify cases.
 | Pod labelled but not isolated | `kubectl get ccnp k8s-soar-quarantine`, `cilium-dbg policy get` on the node |
 | Quarantined container restarts | probes from the node blocked: check host entity allowed in the policy |
 | Pod CrashLoops with `couldn't initialize inotify: too many open files` | node inotify limit: `sudo sysctl -w fs.inotify.max_user_instances=8192 fs.inotify.max_user_watches=524288` (Ansible sets it persistently), then delete the pod |
+| Console shows "Argo Server unreachable" | `kubectl get pods -n argo`; `console.argoServerUrl`; with `argo.authMode: client` check the soar-console Role |
 | AI verdict always `unavailable` | `kubectl logs -n k8s-soar deploy/soar-agent`, `GET /config` shows `api_key_configured` |
 | Can't remove quarantine label | expected (Kyverno). Resume the case with `release-quarantine` or use an admin identity |

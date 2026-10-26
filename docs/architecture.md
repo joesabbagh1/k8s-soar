@@ -11,7 +11,8 @@
 | Detect | Falco | falco | Syscall rules (`charts/k8s-soar/files/falco-rules/`), routed by tags |
 | Detect / enforce | Tetragon | kube-system | Kernel observe policies (events → Loki); opt-in SIGKILL enforcement |
 | Respond | Argo Events | argo-events (controller), k8s-soar (resources) | Webhook → EventBus → Sensor |
-| Respond | Argo Workflows | argo (controller + UI), k8s-soar (cases) | One Workflow per case; UI = case management |
+| Respond | Argo Workflows | argo (controller + UI), k8s-soar (cases) | One Workflow per case: the engine |
+| Respond | soar-console | k8s-soar | Analyst UI: case list, case page, decisions (resumes the approval gate via Argo Server) |
 | Respond | soar-actions | k8s-soar | Python steps: guard, contain, enrich, triage, notify, act |
 | Triage | soar-agent | k8s-soar | Optional LLM agent, read-only tools, structured verdict |
 | Observe | Prometheus, Loki, Promtail, Grafana | monitoring | Findings + Response dashboards, alerts |
@@ -38,9 +39,11 @@ Alertmanager ──────────────► soar-webhook EventSou
 ## Why these choices
 
 - **Argo instead of Shuffle.** Playbooks are YAML in git (reviewed, versioned, diffable), run as
-  native Kubernetes pods with their own ServiceAccount, and the Argo UI gives per-step logs,
-  inputs/outputs and a resume button for approvals. No GUI-only state, no bootstrap API calls,
-  no port-forwards in the data path.
+  native Kubernetes pods with their own ServiceAccount, and the Argo UI gives per-step logs and
+  inputs/outputs. No GUI-only state, no bootstrap API calls, no port-forwards in the data path.
+- **A case console in front of the engine.** Analysts shouldn't approve from a workflow graph.
+  The console renders each Workflow as an incident (what happened, what was done, evidence,
+  AI verdict) and resumes the gate through Argo's API, so Argo remains the only state.
 - **Deterministic containment, AI after.** Quarantine depends only on the Falco rule's tag, so it
   happens in seconds and works with AI disabled or the provider down. The AI only advises; humans
   approve anything destructive.
@@ -57,7 +60,7 @@ Alertmanager ──────────────► soar-webhook EventSou
 
 | Namespace | Contents |
 |-----------|----------|
-| `k8s-soar` | EventBus, EventSource, Sensor, WorkflowTemplate, cases (Workflows), soar-agent |
+| `k8s-soar` | EventBus, EventSource, Sensor, WorkflowTemplate, cases (Workflows), soar-console, soar-agent |
 | `argo`, `argo-events` | Controllers and Argo UI |
 | `falco` | Falco DaemonSet, falcosidekick, `k8s-soar-falco-rules` ConfigMap |
 | `kyverno` | Kyverno controllers |
