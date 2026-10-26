@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # One-command install: packages + config from *.example, then kubeadm + k8s-soar stack.
 # Usage: ./setup.sh [--force] [--ip <address>] [--pre-setup-only] [ansible-playbook args...]
 set -euo pipefail
@@ -51,7 +52,7 @@ run_pre_setup
 
 if [[ "$PRE_SETUP_ONLY" == true ]]; then
   echo ""
-  echo ">>> Pre-setup complete (SOAR enabled by default: enable_soar: true)."
+  echo ">>> Pre-setup complete. Review inventory.ini and group_vars/all.yml, then run ./setup.sh"
   exit 0
 fi
 
@@ -75,38 +76,18 @@ fi
 
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY="${OBJC_DISABLE_INITIALIZE_FORK_SAFETY:-YES}"
 
+echo ">>> Installing Ansible collections..."
+ansible-galaxy collection install -r requirements.yml >/dev/null
+
 echo ""
 echo ">>> Bootstrapping kubeadm cluster and k8s-soar stack..."
 ansible-playbook -i inventory.ini site.yml "${EXTRA_ARGS[@]}" "${ANSIBLE_ARGS[@]}"
 
-if [[ -f group_vars/all.yml ]]; then
-  CLUSTER_NAME="$(grep '^cluster_name:' group_vars/all.yml | awk '{print $2}' | tr -d '"')"
-  KUBECONFIG_PATH="${HOME}/.kube/config-${CLUSTER_NAME:-k8s-soar-client}"
-  ENV_FILE="${HOME}/.kube/${CLUSTER_NAME:-k8s-soar-client}.env"
-
-  if [[ -f "$ENV_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$ENV_FILE"
-  elif [[ -f "$KUBECONFIG_PATH" ]]; then
-    export KUBECONFIG="$KUBECONFIG_PATH"
-    if grep -qE '^enable_soar:[[:space:]]*true' group_vars/all.yml; then
-      export K8S_SOAR_ENABLE_SOAR=1
-    fi
-  fi
-
-  if [[ -f "$KUBECONFIG_PATH" ]]; then
-    echo ""
-    echo ">>> Cluster nodes:"
-    kubectl get nodes
-    echo ""
-    if [[ -f "$ENV_FILE" ]]; then
-      echo ">>> Cluster env loaded for final kubectl check."
-      echo ">>> This terminal started before ~/.bashrc was updated — run once:"
-      echo "    source ~/.bashrc"
-      echo ">>> Or open a new terminal (no source needed)."
-    fi
-  fi
-fi
+CLUSTER_NAME="$(awk '/^cluster_name:/ {gsub(/"/, "", $2); print $2}' group_vars/all.yml)"
+ENV_FILE="${HOME}/.kube/${CLUSTER_NAME:-k8s-soar}.env"
 
 echo ""
 echo ">>> Bootstrap complete."
+echo ">>> New terminals load the cluster automatically. In this one run:"
+echo "      source ${ENV_FILE}"
+echo ">>> Then: make status    (from the repository root)"

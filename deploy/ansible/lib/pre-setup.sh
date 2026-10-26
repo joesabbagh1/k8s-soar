@@ -80,7 +80,7 @@ run_pre_setup() {
     ethtool \
     socat \
     ipset \
-    python3-yaml
+    python3-pip
 
   mkdir -p group_vars
   pre_setup_write_from_example inventory.example.ini inventory.ini

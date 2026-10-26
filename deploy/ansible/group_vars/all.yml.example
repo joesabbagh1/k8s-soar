@@ -1,0 +1,41 @@
+---
+# Copy to group_vars/all.yml and customize, or run ./setup.sh which renders it
+# from this file (replacing {{PRESETUP_*}} placeholders).
+
+cluster_name: k8s-soar
+# Kubernetes minor release (apt repo pkgs.k8s.io/core:/stable:/<k8s_version>).
+k8s_version: "v1.31"
+# Exact package version, e.g. "1.31.4-1.1". Empty = newest patch of k8s_version
+# at first install; never upgraded on re-runs.
+k8s_package_version: ""
+pod_network_cidr: "10.244.0.0/16"
+
+# IP of the control-plane node (must match master host in inventory)
+apiserver_advertise_address: "{{PRESETUP_HOST_IP}}"
+
+# Where Ansible fetches kubeconfig on the operator machine
+kubeconfig_dest: "{{ lookup('env', 'HOME') }}/.kube/config-{{ cluster_name }}"
+# Env file sourced by ~/.bashrc / ~/.zshrc
+kubeconfig_env_file: "{{ lookup('env', 'HOME') }}/.kube/{{ cluster_name }}.env"
+configure_localhost: true
+
+# DESTRUCTIVE: wipe existing k3s/kubeadm state (iptables, /etc/kubernetes,
+# etcd...) before install. Only for re-imaging lab machines.
+nuclear_wipe: false
+
+# Single-node: allow workloads on the control plane when [workers] is empty.
+allow_control_plane_scheduling: true
+
+# Minimum kernel for Falco modern_ebpf / Tetragon
+min_kernel_version: "5.10"
+
+# --- k8s-soar stack (installed with helmfile after the cluster is up) --------
+install_k8s_soar: true
+k8s_soar_root: "{{ playbook_dir }}/../.."
+# helmfile environment: default | lab (lab adds the security-lab namespace)
+k8s_soar_env: default
+
+# Pinned operator tooling (installed to ~/.local/bin if missing).
+helm_version: "v3.19.0"
+helmfile_version: "1.1.7"
+local_path_provisioner_version: "v0.0.30"
