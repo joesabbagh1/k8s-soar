@@ -1,0 +1,30 @@
+# k8s-soar — Impact (TA0040)
+
+- rule: K8sSoar Crypto Miner Execution
+  desc: A known miner binary was started, or a process was launched with a stratum pool URL.
+  condition: >
+    spawned_process and k8s_soar_workload
+    and (proc.name in (k8s_soar_miner_binaries)
+         or proc.cmdline contains "stratum+tcp://"
+         or proc.cmdline contains "stratum+ssl://"
+         or proc.cmdline contains "--donate-level")
+  output: >
+    Crypto miner started
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: CRITICAL
+  tags: [k8s-soar, soar_contain, mitre_impact, T1496]
+
+- rule: K8sSoar Crypto Mining Pool Connection
+  desc: Outbound connection to a known mining-pool domain or a typical stratum port.
+  condition: >
+    outbound and k8s_soar_workload
+    and (fd.sip.name in (k8s_soar_miner_domains) or fd.sport in (k8s_soar_miner_ports))
+  output: >
+    Connection to mining pool
+    (proc=%proc.name cmdline=%proc.cmdline connection=%fd.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: CRITICAL
+  tags: [k8s-soar, soar_contain, mitre_impact, T1496]

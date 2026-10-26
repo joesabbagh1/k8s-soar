@@ -1,0 +1,108 @@
+# k8s-soar — shared lists and macros.
+#
+# Loaded after the stock falco_rules.yaml, so stock macros (container,
+# spawned_process, open_read, open_write, outbound, ...) are available.
+#
+# Tuning: to extend a list without editing this file, append in your own
+# rules file, e.g.
+#   - list: k8s_soar_trusted_namespaces
+#     items: [my-platform-ns]
+#     override:
+#       items: append
+#
+# Routing tags (read by the Argo Sensor and soar-actions):
+#   soar_contain  -> network-quarantine the pod immediately, then triage + notify
+#   soar_notify   -> triage + notify only
+# MITRE tags: mitre_<tactic> and the technique ID (e.g. T1059.004).
+
+- list: k8s_soar_trusted_namespaces
+  items:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - falco
+    - monitoring
+    - kyverno
+    - argo
+    - argo-events
+    - k8s-soar
+    - local-path-storage
+
+- list: k8s_soar_shell_binaries
+  items: [ash, bash, csh, ksh, sh, tcsh, zsh, dash, busybox]
+
+- list: k8s_soar_script_interpreters
+  items: [python, python2, python3, perl, ruby, php, node, lua]
+
+- list: k8s_soar_network_tools
+  items: [nc, ncat, netcat, socat, nmap, masscan, zmap, tcpdump, tshark, hping3, telnet]
+
+- list: k8s_soar_file_readers
+  items: [cat, head, tail, less, more, base64, xxd, od, strings, grep, egrep, awk, sed, cp, tar, curl, wget, vi, vim, nano]
+
+- list: k8s_soar_escape_tools
+  items: [nsenter, unshare, chroot, mount, umount, insmod, modprobe, rmmod, debugfs, capsh, setns]
+
+- list: k8s_soar_k8s_clients
+  items: [kubectl, kubeletctl, peirates, kube-hunter, kubeaudit, crictl, ctr]
+
+- list: k8s_soar_package_managers
+  items: [apt, apt-get, aptitude, dpkg, apk, yum, dnf, microdnf, rpm, zypper, pip, pip3, gem, npm, yarn]
+
+- list: k8s_soar_miner_binaries
+  items: [xmrig, xmr-stak, minerd, cpuminer, cpuminer-multi, ethminer, nbminer, t-rex, lolminer, phoenixminer, ccminer, nanominer]
+
+- list: k8s_soar_miner_ports
+  items: [3333, 3334, 4444, 5555, 5588, 6666, 7777, 8888, 9999, 14433, 14444, 45560, 45700]
+
+- list: k8s_soar_miner_domains
+  items:
+    - pool.minexmr.com
+    - xmr.pool.minergate.com
+    - pool.supportxmr.com
+    - xmr-eu1.nanopool.org
+    - xmr-us-east1.nanopool.org
+    - gulf.moneroocean.stream
+    - mine.c3pool.com
+    - xmrpool.eu
+    - eth.2miners.com
+
+- list: k8s_soar_sensitive_files
+  items: [/etc/shadow, /etc/gshadow, /etc/sudoers, /etc/master.passwd, /etc/pam.conf]
+
+- list: k8s_soar_binary_dirs
+  items: [/bin, /sbin, /usr/bin, /usr/sbin, /usr/local/bin, /usr/local/sbin]
+
+# Images that legitimately do the things below (CI runners, debug images...).
+# Matched as a prefix of container.image.repository.
+- list: k8s_soar_allowed_images
+  items: []
+
+- macro: k8s_soar_allowed_image
+  condition: (container.image.repository pmatch (k8s_soar_allowed_images))
+
+# A container in a namespace we monitor (not the platform itself).
+- macro: k8s_soar_workload
+  condition: >
+    container
+    and k8s.ns.name exists
+    and not k8s.ns.name in (k8s_soar_trusted_namespaces)
+    and not k8s_soar_allowed_image
+
+- macro: k8s_soar_spawned_shell
+  condition: spawned_process and proc.name in (k8s_soar_shell_binaries)
+
+# stdin/stdout/stderr duplicated onto a network socket — the core of almost
+# every reverse shell (bash -i >& /dev/tcp/..., nc -e, python pty.spawn, ...).
+- macro: k8s_soar_dup_stdio_to_socket
+  condition: >
+    evt.type in (dup, dup2, dup3) and evt.dir = <
+    and evt.rawres in (0, 1, 2)
+    and fd.type in ("ipv4", "ipv6")
+
+- macro: k8s_soar_sa_token_path
+  condition: >
+    (fd.name startswith /var/run/secrets/kubernetes.io/serviceaccount/
+     or fd.name startswith /run/secrets/kubernetes.io/serviceaccount/
+     or fd.name startswith /var/run/secrets/eks.amazonaws.com/
+     or fd.name startswith /var/run/secrets/tokens/)

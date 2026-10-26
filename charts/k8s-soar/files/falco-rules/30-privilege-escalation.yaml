@@ -1,0 +1,29 @@
+# k8s-soar — Privilege Escalation (TA0004) and Defense Evasion (TA0005)
+
+- rule: K8sSoar Container Escape Tooling
+  desc: >
+    Namespace/mount/kernel-module tooling run inside a workload container
+    (nsenter, unshare, mount, insmod...). These are the building blocks of
+    container breakouts.
+  condition: spawned_process and k8s_soar_workload and proc.name in (k8s_soar_escape_tools)
+  output: >
+    Container escape tooling executed
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname user=%user.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    privileged=%container.privileged
+    image=%container.image.repository:%container.image.tag)
+  priority: CRITICAL
+  tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
+
+- rule: K8sSoar Write Below Binary Directory
+  desc: A file was written below a system binary directory inside a running workload container.
+  condition: >
+    open_write and k8s_soar_workload
+    and (fd.directory in (k8s_soar_binary_dirs))
+  output: >
+    File written below binary directory
+    (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: ERROR
+  tags: [k8s-soar, soar_notify, mitre_persistence, mitre_defense_evasion, T1036]

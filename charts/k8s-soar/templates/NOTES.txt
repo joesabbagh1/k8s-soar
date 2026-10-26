@@ -1,0 +1,16 @@
+k8s-soar {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
+
+Response mode : {{ .Values.response.mode }}{{ if eq .Values.response.mode "dry-run" }} (nothing will be modified){{ end }}
+Approval gate : {{ .Values.response.approvalGate }}
+AI triage     : {{ if .Values.ai.enabled }}{{ .Values.ai.provider }}/{{ .Values.ai.model }}{{ else }}disabled (set ai.enabled=true, then `make ai-key`){{ end }}
+
+What happens when Falco fires a k8s-soar rule:
+  Falco -> falcosidekick -> {{ include "k8s-soar.webhookService" . }}:{{ .Values.response.webhookPort }}/falco
+        -> Sensor soar-router -> Workflow from template falco-response
+  Each case is an Argo Workflow:  make argo-ui   (then open the "{{ .Release.Namespace }}" namespace)
+
+Useful commands:
+  kubectl get workflows -n {{ .Release.Namespace }}                 # cases
+  kubectl get pods -A -l {{ .Values.quarantine.labelKey }}={{ .Values.quarantine.labelValue }}   # quarantined pods
+  kubectl get policyreport -A                                   # Kyverno findings
+  make verify                                                   # health check

@@ -1,0 +1,161 @@
+# ==============================================================================
+# k8s-soar — values for k8s-soar's own resources
+#
+#   detection   Falco rules, Kyverno admission policies, Tetragon tracing policies
+#   response    Cilium quarantine policy + Argo Events/Workflows pipeline
+#   ai          optional AI triage agent (bring your own provider + key)
+#
+# Secrets (Slack, Jira, Grafana token, AI key) are NOT set here. Create them
+# with `make secrets` from deploy/secrets.env (see deploy/secrets.env.example).
+# ==============================================================================
+
+# Namespaces k8s-soar never contains workloads in, and that Falco rules,
+# Kyverno and Tetragon policies ignore. Keep in sync with the
+# k8s_soar_trusted_namespaces list in files/falco-rules/00-macros.yaml.
+trustedNamespaces:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - falco
+  - monitoring
+  - kyverno
+  - argo
+  - argo-events
+  - k8s-soar
+  - local-path-storage
+
+# Lab profile: creates a namespace for the k8s-soar-scenarios attack simulations.
+lab:
+  enabled: false
+  namespace: security-lab
+
+image:
+  registry: ghcr.io/joesabbagh1
+  tag: ""            # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# ------------------------------------------------------------------------------
+# Detection
+# ------------------------------------------------------------------------------
+detection:
+  falco:
+    # Rules from files/falco-rules/*.yaml shipped as a ConfigMap in this
+    # namespace; the Falco release mounts it at /etc/falco/k8s-soar.d and
+    # hot-reloads on change.
+    enabled: true
+    namespace: falco
+    configMapName: k8s-soar-falco-rules
+
+  kyverno:
+    enabled: true
+    # Per policy: Audit (report only, PolicyReports) | Enforce (block) | Disabled.
+    # Start with Audit, review `kubectl get policyreport -A`, then Enforce.
+    podSecurityBaseline: Audit     # privileged, host namespaces/ports, hostPath, dangerous capabilities
+    podSecurityRestricted: Audit   # non-root, drop ALL caps, seccomp, no privilege escalation
+    disallowLatestTag: Audit
+    requireResourceLimits: Audit
+    restrictSaTokenAutomount: Disabled   # noisy on real clusters; enable when ready
+
+  tetragon:
+    enabled: true
+    # Observe-only policies: events go to Tetragon's export-stdout -> Promtail
+    # -> Loki and are used for case enrichment and AI triage.
+    observe:
+      sensitiveFileAccess: true
+      # tcp_connect to anything outside these CIDRs (i.e. the internet).
+      outboundConnections: true
+      internalCidrs: [127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      namespaceEscapes: true
+    # In-kernel enforcement (SIGKILL) on sensitive writes, only for pods that
+    # opt in with this label.
+    enforce:
+      enabled: true
+      podLabel: k8s-soar.io/enforce
+
+# ------------------------------------------------------------------------------
+# Response
+# ------------------------------------------------------------------------------
+quarantine:
+  labelKey: security.quarantine
+  labelValue: "true"
+  # Kyverno Enforce policy: only the responder (and the groups below) may
+  # remove the quarantine label from a pod.
+  protectLabel: true
+  adminGroups:
+    - system:masters
+    - kubeadm:cluster-admins
+
+response:
+  enabled: true
+  # contain   quarantine pods for soar_contain rules, notify for the rest
+  # notify    never modify workloads, only notify
+  # dry-run   run the whole pipeline, log what would be done
+  mode: contain
+  # Detach the quarantined pod from its ReplicaSet/DaemonSet/Job so a clean
+  # replacement is scheduled and the compromised pod is kept for forensics.
+  orphanFromController: true
+  # Same rule on the same pod within this window opens no new case.
+  dedupMinutes: 10
+  # Analyst approval gate (Argo suspend step) for destructive follow-ups.
+  approvalGate: true
+  # Max new response workflows per second (burst protection).
+  rateLimitPerSecond: 10
+  # How long finished cases stay visible in the Argo UI.
+  workflowTTLSeconds: 1209600   # 14 days
+  activeDeadlineSeconds: 604800 # cases awaiting approval expire after 7 days
+  webhookPort: 12000
+  eventBus:
+    jetstreamVersion: "2.10.10"
+  actions:
+    image: k8s-soar-actions
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits: { memory: 256Mi }
+
+integrations:
+  # Secret with optional keys: slack-webhook-url, jira-url, jira-email,
+  # jira-api-token, jira-project-key, grafana-api-token.
+  secretName: soar-integrations
+  jiraIssueType: Task
+  lokiUrl: http://loki.monitoring.svc.cluster.local:3100
+  grafanaUrl: http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local
+  # Browser-facing URLs used for links in Slack/Jira. Leave empty to omit.
+  grafanaExternalUrl: ""
+  argoExternalUrl: ""
+
+# ------------------------------------------------------------------------------
+# AI triage agent
+# ------------------------------------------------------------------------------
+ai:
+  enabled: false
+  # anthropic | openai | gemini | azure | bedrock | vertex_ai | ollama | openrouter | mistral
+  provider: anthropic
+  model: claude-sonnet-5-5
+  # Custom endpoint: Ollama (http://ollama:11434), Azure OpenAI, LiteLLM proxy...
+  baseUrl: ""
+  # Secret holding the provider key: `make ai-key PROVIDER=... KEY=...`.
+  apiKeySecret:
+    name: soar-ai
+    key: api-key
+  # Extra env for providers that need more than a key (e.g. AWS_REGION_NAME
+  # for bedrock, AZURE_API_VERSION for azure).
+  extraEnv: []
+  maxToolCalls: 8
+  maxTokens: 2048
+  timeoutSeconds: 60
+  # Allow the agent to read pod logs (they are sent to the model provider).
+  sendLogs: true
+  image: k8s-soar-agent
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+# ------------------------------------------------------------------------------
+# Observability
+# ------------------------------------------------------------------------------
+observability:
+  enabled: true
+  namespace: monitoring
+  # ConfigMaps picked up by the Grafana dashboard sidecar.
+  dashboards: true
