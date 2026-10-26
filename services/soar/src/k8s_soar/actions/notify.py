@@ -32,6 +32,8 @@ def _slack_escape(text: str) -> str:
 
 def links(alert: Alert, settings: Settings, workflow: str) -> dict[str, str]:
     out: dict[str, str] = {}
+    if settings.console_external_url and workflow:
+        out["Case"] = f"{settings.console_external_url.rstrip('/')}/cases/{workflow}"
     if settings.argo_external_url and workflow:
         out["Argo case"] = f"{settings.argo_external_url.rstrip('/')}/workflows/k8s-soar/{workflow}"
     if settings.grafana_external_url:

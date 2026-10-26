@@ -30,6 +30,7 @@ class Settings(BaseModel):
     grafana_external_url: str = ""
     grafana_api_token: str = ""
     argo_external_url: str = ""
+    console_external_url: str = ""
     slack_webhook_url: str = ""
     jira_url: str = ""
     jira_email: str = ""
@@ -58,6 +59,7 @@ def settings() -> Settings:
         grafana_external_url=_env("SOAR_GRAFANA_EXTERNAL_URL"),
         grafana_api_token=_env("GRAFANA_API_TOKEN"),
         argo_external_url=_env("SOAR_ARGO_EXTERNAL_URL"),
+        console_external_url=_env("SOAR_CONSOLE_EXTERNAL_URL"),
         slack_webhook_url=_env("SLACK_WEBHOOK_URL"),
         jira_url=_env("JIRA_URL").rstrip("/"),
         jira_email=_env("JIRA_EMAIL"),
