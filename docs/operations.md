@@ -37,7 +37,7 @@ make deploy-soar          # only rules/policies/response/agent — fast
 make status               # health check
 make cases                # recent cases
 make quarantined          # quarantined pods
-make argo-ui / grafana    # UIs on localhost
+make argo-ui / grafana    # UIs (argo-ui listens on all interfaces; cases at /workflows/k8s-soar)
 ```
 
 **Upgrading a component:** bump its `version:` in `deploy/helmfile.yaml.gotmpl`, read the

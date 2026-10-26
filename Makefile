@@ -53,8 +53,8 @@ quarantined: ## List quarantined pods
 # machine (e.g. a remote lab box). Use ARGO_UI_ADDRESS=127.0.0.1 to keep it local.
 ARGO_UI_ADDRESS ?= 0.0.0.0
 
-argo-ui: ## Open the case UI on http://<this machine>:2746
-	@echo "Argo UI: http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):2746  (namespace: $(SOAR_NS))"
+argo-ui: ## Open the case list on http://<this machine>:2746/workflows/k8s-soar
+	@echo "Cases:   http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):2746/workflows/$(SOAR_NS)"
 	kubectl port-forward --address $(ARGO_UI_ADDRESS) -n argo svc/argo-workflows-server 2746:2746
 
 grafana: ## Open Grafana on http://localhost:3000
