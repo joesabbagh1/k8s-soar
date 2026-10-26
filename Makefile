@@ -28,10 +28,10 @@ diff: ## Show what `make deploy` would change
 	$(HELMFILE) diff
 
 deploy: secrets ## Install/upgrade the whole stack on the current cluster (ENV=default|lab)
-	$(HELMFILE) apply
+	$(HELMFILE) apply --skip-diff-on-install
 
 deploy-soar: ## Upgrade only the k8s-soar chart (rules, policies, response, agent)
-	$(HELMFILE) -l name=k8s-soar apply
+	$(HELMFILE) -l name=k8s-soar apply --skip-diff-on-install
 
 destroy: ## Uninstall every release (CRDs and namespaces are kept)
 	$(HELMFILE) destroy

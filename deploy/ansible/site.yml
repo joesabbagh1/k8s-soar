@@ -324,7 +324,7 @@
       changed_when: "'created' in secrets_out.stdout"
 
     - name: Deploy the stack with helmfile ({{ k8s_soar_env }} environment)
-      ansible.builtin.command: helmfile -f deploy/helmfile.yaml.gotmpl -e {{ k8s_soar_env }} apply --suppress-diff
+      ansible.builtin.command: helmfile -f deploy/helmfile.yaml.gotmpl -e {{ k8s_soar_env }} apply --suppress-diff --skip-diff-on-install
       args:
         chdir: "{{ k8s_soar_root }}"
       register: helmfile_apply

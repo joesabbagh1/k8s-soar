@@ -1,8 +1,12 @@
 # k8s-soar — every Helm release, pinned, in dependency order.
 #
-#   make deploy                 # = helmfile -f deploy/helmfile.yaml.gotmpl -e default apply
+#   make deploy                 # = helmfile -f deploy/helmfile.yaml.gotmpl -e default apply --skip-diff-on-install
 #   make deploy ENV=lab         # adds the security-lab namespace for attack scenarios
 #   make diff                   # preview changes
+#
+# Releases with custom resources whose CRDs are installed by another release set
+# disableValidationOnInstall, and apply runs with --skip-diff-on-install: on a fresh
+# cluster helm-diff would otherwise validate them before those CRDs exist.
 #
 # Settings you are expected to change live in deploy/profiles/<env>.yaml.
 # Per-component Helm values live in deploy/values/<release>.yaml.gotmpl.
@@ -96,6 +100,7 @@ releases:
     namespace: falco
     chart: falcosecurity/falco
     version: 4.22.0
+    disableValidationOnInstall: true   # ServiceMonitor CRD comes from kube-prometheus-stack
     needs:
       - kube-system/cilium
       {{- if .Values.observability.enabled }}
@@ -117,6 +122,7 @@ releases:
     namespace: argo
     chart: argo/argo-workflows
     version: 2.0.14
+    disableValidationOnInstall: true   # ServiceMonitor CRD comes from kube-prometheus-stack
     needs:
       - kube-system/cilium
       {{- if .Values.observability.enabled }}
@@ -129,6 +135,7 @@ releases:
   - name: k8s-soar
     namespace: k8s-soar
     chart: ../charts/k8s-soar
+    disableValidationOnInstall: true   # Cilium/Kyverno/Tetragon/Argo CRDs come from earlier releases
     needs:
       - kyverno/kyverno
       - kube-system/tetragon
