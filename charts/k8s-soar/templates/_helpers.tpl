@@ -34,6 +34,8 @@ exclude:
 {{- define "k8s-soar.step" -}}
 image: {{ include "k8s-soar.image" (dict "root" .root "name" .root.Values.response.actions.image) }}
 imagePullPolicy: {{ .root.Values.image.pullPolicy }}
+# Explicit, so Argo's emissary executor never has to query the registry for the entrypoint.
+command: [soar-actions]
 args: {{ toJson .args }}
 envFrom:
   - configMapRef:
