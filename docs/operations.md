@@ -66,5 +66,6 @@ cluster alerts to the response pipeline as notify cases.
 | Case stuck Pending | step image pull (`kubectl describe pod -n k8s-soar <step pod>`), wrong `image.registry` |
 | Pod labelled but not isolated | `kubectl get ccnp k8s-soar-quarantine`, `cilium-dbg policy get` on the node |
 | Quarantined container restarts | probes from the node blocked: check host entity allowed in the policy |
+| Pod CrashLoops with `couldn't initialize inotify: too many open files` | node inotify limit: `sudo sysctl -w fs.inotify.max_user_instances=8192 fs.inotify.max_user_watches=524288` (Ansible sets it persistently), then delete the pod |
 | AI verdict always `unavailable` | `kubectl logs -n k8s-soar deploy/soar-agent`, `GET /config` shows `api_key_configured` |
 | Can't remove quarantine label | expected (Kyverno). Resume the case with `release-quarantine` or use an admin identity |

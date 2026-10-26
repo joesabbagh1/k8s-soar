@@ -85,6 +85,19 @@
         - net.bridge.bridge-nf-call-iptables
         - net.ipv4.ip_forward
 
+    # Falco, Tetragon, Cilium, Promtail and the Argo pods each hold inotify
+    # instances; the distro default (128) runs out and pods crash with
+    # "couldn't initialize inotify: too many open files".
+    - name: Raise inotify limits
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-k8s-soar-inotify.conf
+        reload: true
+      loop:
+        - { name: fs.inotify.max_user_instances, value: "8192" }
+        - { name: fs.inotify.max_user_watches, value: "524288" }
+
     - name: Install node packages
       ansible.builtin.apt:
         name: [containerd, apt-transport-https, ca-certificates, curl, gpg, conntrack, ethtool, socat, ipset]
@@ -330,8 +343,32 @@
       register: helmfile_apply
       changed_when: "'UPDATED RELEASES' in helmfile_apply.stdout"
 
+    # Pods keep settling after helmfile returns (EventBus quorum, Falco reloading
+    # rules), so retry for a few minutes before calling it a failure.
     - name: Verify the stack
       ansible.builtin.command: ./scripts/verify.sh
       args:
         chdir: "{{ k8s_soar_root }}"
+      environment:
+        NO_COLOR: "1"
+      register: verify
+      until: verify.rc == 0
+      retries: 10
+      delay: 30
       changed_when: false
+      failed_when: false
+
+    - name: Verification report
+      ansible.builtin.debug:
+        msg: "{{ verify.stdout | regex_replace('\\x1b\\[[0-9;]*m', '') | split('\n') }}"
+
+    - name: Next steps
+      ansible.builtin.debug:
+        msg:
+          - "kubectl in a new shell picks up the cluster automatically; in this one run: source {{ kubeconfig_env_file }}"
+          - "make status | make argo-ui | make grafana   (from {{ k8s_soar_root }})"
+
+    - name: Fail if verification did not pass
+      ansible.builtin.fail:
+        msg: "verify.sh reported failures — see the report above"
+      when: verify.rc != 0

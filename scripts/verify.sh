@@ -2,7 +2,11 @@
 # Health check of a deployed k8s-soar stack. Exit 1 if anything essential is broken.
 set -uo pipefail
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\033[0m'
+else
+  RED=''; GREEN=''; YELLOW=''; BOLD=''; NC=''
+fi
 pass=0; warn=0; fail=0
 ok()      { echo -e "  ${GREEN}✓${NC} $*"; pass=$((pass + 1)); }
 warning() { echo -e "  ${YELLOW}!${NC} $*"; warn=$((warn + 1)); }
@@ -47,7 +51,7 @@ if kubectl get configmap -n falco k8s-soar-falco-rules >/dev/null 2>&1; then
 else
   bad "k8s-soar Falco rules ConfigMap missing"
 fi
-falco_logs=$(kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --tail=400 2>/dev/null || true)
+falco_logs=$(kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --tail=-1 2>/dev/null || true)
 if grep -qiE 'k8s-soar.d|K8sSoar' <<<"$falco_logs"; then
   ok "Falco loaded /etc/falco/k8s-soar.d"
 elif grep -qiE 'error|LOAD_ERR' <<<"$falco_logs"; then
@@ -81,7 +85,16 @@ else
   bad "webhook service missing — Falco alerts cannot reach the response pipeline"
 fi
 sensor_pods=$(kubectl get pods -n "$SOAR_NS" -l sensor-name=soar-router --no-headers 2>/dev/null | grep -c Running || true)
-if [[ "$sensor_pods" -gt 0 ]]; then ok "sensor running"; else bad "sensor soar-router not running"; fi
+if [[ "$sensor_pods" -gt 0 ]]; then
+  ok "sensor running"
+else
+  bad "sensor soar-router not running"
+  reason=$(kubectl logs -n "$SOAR_NS" -l sensor-name=soar-router --tail=20 2>/dev/null | grep -iE 'error|fatal' | tail -1 || true)
+  [[ -n "$reason" ]] && echo "      last error: ${reason:0:200}"
+  if grep -qi inotify <<<"$reason"; then
+    echo "      fix: raise fs.inotify.max_user_instances on the nodes (see docs/operations.md)"
+  fi
+fi
 mode=$(kubectl get configmap -n "$SOAR_NS" soar-config -o jsonpath='{.data.SOAR_MODE}' 2>/dev/null)
 ok "response mode: ${mode:-unknown}"
 
