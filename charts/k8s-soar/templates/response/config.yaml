@@ -18,5 +18,6 @@ data:
   SOAR_GRAFANA_URL: {{ .Values.integrations.grafanaUrl | quote }}
   SOAR_GRAFANA_EXTERNAL_URL: {{ .Values.integrations.grafanaExternalUrl | quote }}
   SOAR_ARGO_EXTERNAL_URL: {{ .Values.integrations.argoExternalUrl | quote }}
+  SOAR_CONSOLE_EXTERNAL_URL: {{ .Values.console.externalUrl | quote }}
   JIRA_ISSUE_TYPE: {{ .Values.integrations.jiraIssueType | quote }}
 {{- end }}

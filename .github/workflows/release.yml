@@ -1,6 +1,6 @@
 name: Release
 
-# Tag vX.Y.Z -> images ghcr.io/<owner>/k8s-soar-{actions,agent}:X.Y.Z and the
+# Tag vX.Y.Z -> images ghcr.io/<owner>/k8s-soar-{actions,console,agent}:X.Y.Z and the
 # chart oci://ghcr.io/<owner>/charts/k8s-soar:X.Y.Z (appVersion X.Y.Z, which is
 # the image tag the chart uses by default).
 on:
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [actions, agent]
+        target: [actions, console, agent]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3

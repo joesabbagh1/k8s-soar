@@ -125,5 +125,5 @@ pass "a clean replacement pod is running"
 echo
 phase=$(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase}')
 echo "Case ${WF} is ${phase} (Running = waiting at the approval gate)."
-echo "Inspect: make argo-ui, then open /workflows/${SOAR_NS}/${WF}  (use --keep to keep the test pod for the approval step)"
+echo "Review it: make console, then open /cases/${WF}  (use --keep to keep the test pod for the decision)"
 echo -e "\033[0;32mSmoke test passed.\033[0m"

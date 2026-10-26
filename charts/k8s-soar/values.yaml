@@ -3,6 +3,7 @@
 #
 #   detection   Falco rules, Kyverno admission policies, Tetragon tracing policies
 #   response    Cilium quarantine policy + Argo Events/Workflows pipeline
+#   console     analyst case UI (case list, case page, decision buttons)
 #   ai          optional AI triage agent (bring your own provider + key)
 #
 # Secrets (Slack, Jira, Grafana token, AI key) are NOT set here. Create them
@@ -122,6 +123,25 @@ integrations:
   # Browser-facing URLs used for links in Slack/Jira. Leave empty to omit.
   grafanaExternalUrl: ""
   argoExternalUrl: ""
+
+# ------------------------------------------------------------------------------
+# Analyst console (`make console`)
+# ------------------------------------------------------------------------------
+console:
+  enabled: true
+  image: k8s-soar-console
+  # Reached in-cluster; decisions use the same API as the Argo UI.
+  argoServerUrl: http://argo-workflows-server.argo.svc.cluster.local:2746
+  argoVerifyTls: true
+  # Browser-facing URL (e.g. https://soar.example.com). Slack/Jira messages
+  # link to the case page when set.
+  externalUrl: ""
+  # Behind an authenticating proxy (oauth2-proxy, ...): header carrying the
+  # user's identity, e.g. X-Auth-Request-Email. Empty: analysts type a name.
+  userHeader: ""
+  resources:
+    requests: { cpu: 20m, memory: 96Mi }
+    limits: { memory: 256Mi }
 
 # ------------------------------------------------------------------------------
 # AI triage agent

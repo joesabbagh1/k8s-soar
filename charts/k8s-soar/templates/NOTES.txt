@@ -7,7 +7,10 @@ AI triage     : {{ if .Values.ai.enabled }}{{ .Values.ai.provider }}/{{ .Values.
 What happens when Falco fires a k8s-soar rule:
   Falco -> falcosidekick -> {{ include "k8s-soar.webhookService" . }}:{{ .Values.response.webhookPort }}/falco
         -> Sensor soar-router -> Workflow from template falco-response
-  Each case is an Argo Workflow:  make argo-ui   (then open the "{{ .Release.Namespace }}" namespace)
+{{- if .Values.console.enabled }}
+  Review and decide cases in the console:  make console   (http://<host>:8081)
+{{- end }}
+  Each case runs as an Argo Workflow:      make argo-ui   (/workflows/{{ .Release.Namespace }})
 
 Useful commands:
   kubectl get workflows -n {{ .Release.Namespace }}                 # cases

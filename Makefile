@@ -57,6 +57,13 @@ argo-ui: ## Open the case list on http://<this machine>:2746/workflows/k8s-soar
 	@echo "Cases:   http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):2746/workflows/$(SOAR_NS)"
 	kubectl port-forward --address $(ARGO_UI_ADDRESS) -n argo svc/argo-workflows-server 2746:2746
 
+# Same reasoning as argo-ui: reachable from outside a remote lab box.
+CONSOLE_ADDRESS ?= 0.0.0.0
+
+console: ## Open the analyst console on http://<this machine>:8081
+	@echo "Console: http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):8081"
+	kubectl port-forward --address $(CONSOLE_ADDRESS) -n $(SOAR_NS) svc/soar-console 8081:8080
+
 grafana: ## Open Grafana on http://localhost:3000
 	@echo "Grafana: http://localhost:3000  user: admin  password: make grafana-password"
 	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
@@ -71,7 +78,7 @@ smoke-test: ## End-to-end test: trigger a rule and check containment (ARGS=--kee
 venv: $(PY)/pytest ## Create the Python dev environment
 $(PY)/pytest:
 	python3 -m venv services/soar/.venv
-	$(PY)/pip install -q -e "services/soar[agent,dev]"
+	$(PY)/pip install -q -e "services/soar[agent,console,dev]"
 
 test: venv ## Unit tests (Python services)
 	cd services/soar && .venv/bin/pytest -q
@@ -82,12 +89,14 @@ lint: venv ## Lint Python, shell, chart and helmfile
 	helm lint charts/k8s-soar
 	helm template k8s-soar charts/k8s-soar --set ai.enabled=true --set lab.enabled=true >/dev/null
 
-images: ## Build both service images (REGISTRY=..., TAG=...)
+images: ## Build the service images (REGISTRY=..., TAG=...)
 	docker build --target actions -t $(REGISTRY)/k8s-soar-actions:$(TAG) services/soar
+	docker build --target console -t $(REGISTRY)/k8s-soar-console:$(TAG) services/soar
 	docker build --target agent -t $(REGISTRY)/k8s-soar-agent:$(TAG) services/soar
 
-push: images ## Push both service images
+push: images ## Push the service images
 	docker push $(REGISTRY)/k8s-soar-actions:$(TAG)
+	docker push $(REGISTRY)/k8s-soar-console:$(TAG)
 	docker push $(REGISTRY)/k8s-soar-agent:$(TAG)
 
 help:
@@ -96,4 +105,4 @@ help:
 	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
 .PHONY: bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
-	argo-ui grafana grafana-password smoke-test venv test lint images push help
+	argo-ui console grafana grafana-password smoke-test venv test lint images push help

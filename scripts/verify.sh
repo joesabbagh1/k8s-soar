@@ -95,6 +95,11 @@ else
     echo "      fix: raise fs.inotify.max_user_instances on the nodes (see docs/operations.md)"
   fi
 fi
+if kubectl get deploy -n "$SOAR_NS" soar-console >/dev/null 2>&1; then
+  rollout deploy/soar-console "$SOAR_NS" "analyst console (make console)"
+else
+  warning "analyst console disabled (k8sSoar.console.enabled=false)"
+fi
 mode=$(kubectl get configmap -n "$SOAR_NS" soar-config -o jsonpath='{.data.SOAR_MODE}' 2>/dev/null)
 ok "response mode: ${mode:-unknown}"
 
