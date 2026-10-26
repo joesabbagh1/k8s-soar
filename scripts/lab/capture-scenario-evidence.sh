@@ -9,7 +9,7 @@ echo ">>> Falco (stdout, last ${SINCE}):"
 falco_logs="$(kubectl logs -n falco -l app.kubernetes.io/name=falco --since="$SINCE" 2>/dev/null || true)"
 if [[ -z "$falco_logs" ]]; then
   echo "    (no logs — is Falco running?)"
-elif echo "$falco_logs" | grep -qiE 'please make sure to install them|error.*plugin'; then
+elif echo "$falco_logs" | grep -iE 'please make sure to install them|error.*plugin' >/dev/null; then
   echo "    (Falco plugins missing — check falcoctl-artifact-install logs: kubectl logs -n falco -l app.kubernetes.io/name=falco -c falcoctl-artifact-install)"
   echo "$falco_logs" | grep -iE 'please make sure|plugin' | tail -3 | sed 's/^/    /'
 else

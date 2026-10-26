@@ -80,9 +80,9 @@ while read -r kv; do
 done < <(kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kernelVersion}{"\n"}{end}' 2>/dev/null || true)
 
 # --- expect fresh kubeadm cluster (no CNI until k8s-soar installs Cilium) ---
-if kubectl get daemonset -n kube-system cilium 2>/dev/null | grep -q cilium; then
+if kubectl get daemonset -n kube-system cilium 2>/dev/null | grep cilium >/dev/null; then
   ok "Cilium already installed"
-elif kubectl get daemonset -n kube-system 2>/dev/null | grep -qE 'calico|flannel|weave|canal'; then
+elif kubectl get daemonset -n kube-system 2>/dev/null | grep -E 'calico|flannel|weave|canal' >/dev/null; then
   warn "existing CNI detected — k8s-soar expects a fresh kubeadm cluster without CNI"
 else
   ok "no CNI yet — ready for k8s-soar Helm install (Cilium)"
@@ -94,7 +94,7 @@ if command -v helmfile >/dev/null 2>&1; then
 else
   bad "helmfile not found (https://github.com/helmfile/helmfile/releases)"
 fi
-if helm plugin list 2>/dev/null | grep -q '^diff'; then
+if helm plugin list 2>/dev/null | grep '^diff' >/dev/null; then
   ok "helm-diff plugin installed"
 else
   warn "helm-diff plugin missing — run: helmfile init"
