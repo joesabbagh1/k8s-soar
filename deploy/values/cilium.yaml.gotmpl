@@ -1,0 +1,14 @@
+# Cilium — eBPF CNI; enforces the k8s-soar quarantine policy.
+kubeProxyReplacement: {{ .Values.cilium.kubeProxyReplacement }}
+operator:
+  replicas: 1
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+{{- if .Values.observability.enabled }}
+  metrics:
+    enabled: [dns, drop, tcp, flow, policy:sourceContext=app|workload-name|pod|reserved-identity;destinationContext=app|workload-name|pod|dns|reserved-identity;labelsContext=source_namespace,destination_namespace]
+{{- end }}

@@ -1,0 +1,4 @@
+# k8s-soar chart: profile overrides (deploy/profiles/*.yaml -> k8sSoar).
+{{ .Values.k8sSoar | toYaml }}
+observability:
+  enabled: {{ .Values.observability.enabled }}

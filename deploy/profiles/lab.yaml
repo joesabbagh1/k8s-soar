@@ -1,0 +1,7 @@
+# Lab profile: target namespace for the k8s-soar-scenarios repository.
+k8sSoar:
+  lab:
+    enabled: true
+  integrations:
+    grafanaExternalUrl: http://127.0.0.1:3000
+    argoExternalUrl: http://127.0.0.1:2746

@@ -1,0 +1,139 @@
+# k8s-soar — every Helm release, pinned, in dependency order.
+#
+#   make deploy                 # = helmfile -f deploy/helmfile.yaml.gotmpl -e default apply
+#   make deploy ENV=lab         # adds the security-lab namespace for attack scenarios
+#   make diff                   # preview changes
+#
+# Settings you are expected to change live in deploy/profiles/<env>.yaml.
+# Per-component Helm values live in deploy/values/<release>.yaml.gotmpl.
+
+environments:
+  default:
+    values:
+      - profiles/default.yaml
+  lab:
+    values:
+      - profiles/default.yaml
+      - profiles/lab.yaml
+---
+helmDefaults:
+  wait: true
+  timeout: 900
+  atomic: false
+  createNamespace: true
+
+repositories:
+  - name: cilium
+    url: https://helm.cilium.io
+  - name: falcosecurity
+    url: https://falcosecurity.github.io/charts
+  - name: kyverno
+    url: https://kyverno.github.io/kyverno
+  - name: prometheus-community
+    url: https://prometheus-community.github.io/helm-charts
+  - name: grafana
+    url: https://grafana.github.io/helm-charts
+  - name: argo
+    url: https://argoproj.github.io/argo-helm
+
+releases:
+  # 1. Network: CNI first — nodes stay NotReady until it is up.
+  - name: cilium
+    namespace: kube-system
+    chart: cilium/cilium
+    version: 1.19.5
+    installed: {{ .Values.cilium.install }}
+    values:
+      - values/cilium.yaml.gotmpl
+
+  # 2. Policy engines (CRDs needed by the k8s-soar chart).
+  - name: kyverno
+    namespace: kyverno
+    chart: kyverno/kyverno
+    version: 3.8.1
+    needs: [kube-system/cilium]
+    values:
+      - values/kyverno.yaml.gotmpl
+
+  - name: tetragon
+    namespace: kube-system
+    chart: cilium/tetragon
+    version: 1.7.0
+    needs: [kube-system/cilium]
+    values:
+      - values/tetragon.yaml.gotmpl
+
+  # 3. Observability: metrics, logs, dashboards.
+  - name: kube-prometheus-stack
+    namespace: monitoring
+    chart: prometheus-community/kube-prometheus-stack
+    version: 86.3.2
+    installed: {{ .Values.observability.enabled }}
+    needs: [kube-system/cilium]
+    values:
+      - values/kube-prometheus-stack.yaml.gotmpl
+
+  - name: loki
+    namespace: monitoring
+    chart: grafana/loki
+    version: 6.55.0
+    installed: {{ .Values.observability.enabled }}
+    needs: [kube-system/cilium]
+    values:
+      - values/loki.yaml.gotmpl
+
+  - name: promtail
+    namespace: monitoring
+    chart: grafana/promtail
+    version: 6.17.1
+    installed: {{ .Values.observability.enabled }}
+    needs: [monitoring/loki]
+    values:
+      - values/promtail.yaml.gotmpl
+
+  # 4. Detection.
+  - name: falco
+    namespace: falco
+    chart: falcosecurity/falco
+    version: 4.22.0
+    needs:
+      - kube-system/cilium
+      {{- if .Values.observability.enabled }}
+      - monitoring/kube-prometheus-stack
+      {{- end }}
+    values:
+      - values/falco.yaml.gotmpl
+
+  # 5. Response engine.
+  - name: argo-events
+    namespace: argo-events
+    chart: argo/argo-events
+    version: 2.4.27
+    needs: [kube-system/cilium]
+    values:
+      - values/argo-events.yaml.gotmpl
+
+  - name: argo-workflows
+    namespace: argo
+    chart: argo/argo-workflows
+    version: 2.0.14
+    needs:
+      - kube-system/cilium
+      {{- if .Values.observability.enabled }}
+      - monitoring/kube-prometheus-stack
+      {{- end }}
+    values:
+      - values/argo-workflows.yaml.gotmpl
+
+  # 6. k8s-soar itself: rules, policies, response pipeline, AI agent, dashboards.
+  - name: k8s-soar
+    namespace: k8s-soar
+    chart: ../charts/k8s-soar
+    needs:
+      - kyverno/kyverno
+      - kube-system/tetragon
+      - falco/falco
+      - argo-events/argo-events
+      - argo/argo-workflows
+    values:
+      - values/k8s-soar.yaml.gotmpl

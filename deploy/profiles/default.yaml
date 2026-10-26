@@ -1,0 +1,45 @@
+# ==============================================================================
+# k8s-soar deployment profile — the settings you are expected to change.
+# Secrets never go here: see deploy/secrets.env.example and `make secrets`.
+# ==============================================================================
+
+cilium:
+  # false if your cluster already has a CNI (k8s-soar then needs Cilium for
+  # quarantine; without it, pods are labelled but not isolated).
+  install: true
+  kubeProxyReplacement: true
+
+observability:
+  enabled: true
+  # Existing Secret with keys admin-user / admin-password (created by `make secrets`).
+  grafanaAdminSecret: grafana-admin
+  prometheusRetention: 7d
+  lokiStorageSize: 10Gi
+
+falco:
+  # Minimum Falco priority forwarded to the response pipeline (the Sensor then
+  # keeps only soar_* tagged rules and stock rules at Critical+).
+  webhookMinimumPriority: warning
+  # Minimum priority stored in Loki for dashboards/search.
+  lokiMinimumPriority: notice
+
+argo:
+  # Argo Server auth. "server" = anyone who can reach the UI acts as the server
+  # SA (fine behind `make argo-ui` port-forward). Use "client" or "sso" when
+  # exposing it.
+  authMode: server
+
+# Passed straight to charts/k8s-soar (see its values.yaml for everything).
+k8sSoar:
+  response:
+    mode: contain          # contain | notify | dry-run
+    approvalGate: true
+  ai:
+    enabled: false
+    provider: anthropic
+    model: claude-sonnet-5-5
+  integrations:
+    grafanaExternalUrl: ""   # e.g. https://grafana.example.com
+    argoExternalUrl: ""      # e.g. https://argo.example.com
+  lab:
+    enabled: false

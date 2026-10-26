@@ -1,0 +1,97 @@
+# Falco — runtime detection (modern eBPF) + falcosidekick fan-out.
+driver:
+  kind: modern_ebpf
+tty: true   # flush JSON alerts immediately
+
+collectors:
+  docker: {enabled: false}
+  containerd: {enabled: false}
+  crio: {enabled: false}
+  containerEngine: {enabled: true}
+  kubernetes: {enabled: true}
+
+# Plugins required by collectors.* (container + k8smeta); without them the
+# k8s.* fields used by k8s-soar rules are empty and rules never match.
+falcoctl:
+  artifact:
+    install: {enabled: true}
+    follow: {enabled: true}
+  config:
+    artifact:
+      install:
+        resolveDeps: true
+        refs:
+          - falco-rules:4
+          - ghcr.io/falcosecurity/plugins/plugin/k8smeta:0.3.0
+          - ghcr.io/falcosecurity/plugins/plugin/container:0.2.4
+      follow:
+        refs:
+          - falco-rules:4
+
+# k8s-soar rules come from a ConfigMap owned by the k8s-soar chart. Falco
+# watches the directory and hot-reloads on change (no Falco restart needed).
+mounts:
+  volumes:
+    - name: k8s-soar-rules
+      configMap:
+        name: k8s-soar-falco-rules
+        optional: true   # Falco may start before the k8s-soar release
+  volumeMounts:
+    - name: k8s-soar-rules
+      mountPath: /etc/falco/k8s-soar.d
+      readOnly: true
+
+falco:
+  rules_files:
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/falco_rules.local.yaml
+    - /etc/falco/rules.d
+    - /etc/falco/k8s-soar.d
+  watch_config_files: true
+  # Evaluate every matching rule (k8s-soar rules overlap with stock rules on
+  # purpose); "first" would shadow them.
+  rule_matching: all
+  json_output: true
+  json_include_output_property: true
+  json_include_tags_property: true
+  log_level: info
+
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: "1", memory: 1Gi}
+
+{{- if .Values.observability.enabled }}
+metrics:
+  enabled: true
+  interval: 15m
+  rulesCountersEnabled: true
+serviceMonitor:
+  create: true
+  labels:
+    release: kube-prometheus-stack
+{{- end }}
+
+falcosidekick:
+  enabled: true
+  replicaCount: 1
+  config:
+    # In-cluster Argo Events webhook (no IPs, no port-forwards).
+    webhook:
+      address: http://soar-webhook-eventsource-svc.k8s-soar.svc.cluster.local:12000/falco
+      minimumpriority: {{ .Values.falco.webhookMinimumPriority | quote }}
+    {{- if .Values.observability.enabled }}
+    loki:
+      hostport: http://loki.monitoring.svc.cluster.local:3100
+      format: json
+      minimumpriority: {{ .Values.falco.lokiMinimumPriority | quote }}
+    {{- end }}
+  {{- if .Values.observability.enabled }}
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
+  prometheusRules:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
+  {{- end }}

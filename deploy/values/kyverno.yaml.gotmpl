@@ -1,0 +1,16 @@
+# Kyverno — admission policies. Single replica per controller (homelab /
+# small clusters); raise for HA.
+admissionController:
+  replicas: 1
+backgroundController:
+  resources:
+    limits:
+      memory: 256Mi
+cleanupController:
+  resources:
+    limits:
+      memory: 128Mi
+reportsController:
+  resources:
+    limits:
+      memory: 256Mi
