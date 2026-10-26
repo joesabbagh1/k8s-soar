@@ -64,8 +64,8 @@ grafana: ## Open Grafana on http://localhost:3000
 grafana-password: ## Print the Grafana admin password
 	@kubectl get secret -n monitoring grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo
 
-smoke-test: ## End-to-end test: trigger a rule and check containment
-	./scripts/smoke-test.sh
+smoke-test: ## End-to-end test: trigger a rule and check containment (ARGS=--keep keeps the test pod)
+	./scripts/smoke-test.sh $(ARGS)
 
 ##@ Develop
 venv: $(PY)/pytest ## Create the Python dev environment
