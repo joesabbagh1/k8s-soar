@@ -39,8 +39,9 @@ guard ──► case[ contain ─► enrich ─► triage ─► notify ─► r
 
 ## Approvals
 
-In the Argo UI open the case → node **approve** → **RESUME** → choose the action. The
-description shows the AI recommendation. CLI equivalent:
+In the Argo UI open the case → click the **approve** node → **RESUME in the node panel** (not
+the toolbar one) → pick the action. The AI recommendation is on the **triage** node
+(INPUTS/OUTPUTS → `recommended`) and in the Slack/Jira message. CLI equivalent:
 
 ```bash
 argo node set <case> -n k8s-soar --node-field-selector displayName=approve \

@@ -63,7 +63,7 @@ Verdict schema (`services/soar/src/k8s_soar/verdict.py`):
 ## Safety model
 
 - **Advisory only.** The agent has no write RBAC. Its recommendation pre-fills nothing; the
-  approval gate defaults to `none` and shows the recommendation as text. Containment never
+  approval gate defaults to `none`; the recommendation is shown on the triage step and in notifications. Containment never
   depends on the AI.
 - **Prompt injection.** Alert fields, logs and tool results are attacker-controlled. They are
   fenced as `<untrusted_data>`, the system prompt instructs the model never to follow

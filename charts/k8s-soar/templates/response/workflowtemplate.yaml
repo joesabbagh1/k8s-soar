@@ -113,8 +113,6 @@ spec:
             when: "'{{`{{inputs.parameters.pod}}`}}' != ''"
             arguments:
               parameters:
-                - name: recommended
-                  value: "{{`{{steps.triage.outputs.parameters.recommended}}`}}"
                 - name: namespace
                   value: "{{`{{inputs.parameters.namespace}}`}}"
                 - name: pod
@@ -123,16 +121,11 @@ spec:
     - name: review
       inputs:
         parameters:
-          - name: recommended
           - name: namespace
           - name: pod
       steps:
         - - name: approve
             template: approve
-            arguments:
-              parameters:
-                - name: recommended
-                  value: "{{`{{inputs.parameters.recommended}}`}}"
         - - name: act
             template: act
             when: "'{{`{{steps.approve.outputs.parameters.action}}`}}' != 'none'"
@@ -218,16 +211,18 @@ spec:
 
     # 6. Human approval. In the Argo UI: open the case -> "approve" node -> RESUME,
     #    pick an action (default 'none'). CLI: argo resume <case> -n {{ .Release.Namespace }}
+    # The Argo UI's RESUME dialog sends back every input of this node as an
+    # output parameter, so it must have exactly the inputs it outputs.
     - name: approve
       inputs:
         parameters:
-          - name: recommended
           - name: action
             default: none
             enum: [none, delete-pod, scale-to-zero, release-quarantine]
             description: >-
-              AI recommendation: {{`{{inputs.parameters.recommended}}`}}.
-              Choose the action to run on the pod, or 'none' to close the case.
+              Action to run on the pod, or 'none' to close the case. The AI
+              recommendation is on the triage step (INPUTS/OUTPUTS) and in the
+              Slack/Jira notification.
       suspend: {}
       outputs:
         parameters:
