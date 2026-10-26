@@ -52,7 +52,9 @@ apply_secret() {
 
 # Grafana admin: generate once, never rotate implicitly.
 if ! kubectl get secret -n monitoring grafana-admin >/dev/null 2>&1; then
-  password="${GRAFANA_ADMIN_PASSWORD:-$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)}"
+  # Read a fixed amount first: `tr </dev/urandom | head` dies of SIGPIPE under pipefail.
+  password="${GRAFANA_ADMIN_PASSWORD:-$(head -c 1024 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9')}"
+  password=${password:0:24}
   apply_secret monitoring grafana-admin "admin-user=admin" "admin-password=${password}"
   echo "Grafana admin password stored in monitoring/grafana-admin (make grafana-password)"
 fi
