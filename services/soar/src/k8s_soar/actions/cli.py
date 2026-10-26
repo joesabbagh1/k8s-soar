@@ -1,0 +1,147 @@
+"""`soar-actions <step>` — one subcommand per step of the falco-response workflow.
+
+Inputs arrive as CLI arguments (Argo substitutes them as single argv entries,
+no shell involved). Outputs are written as files under --out so the
+WorkflowTemplate can expose them as output parameters, and echoed to stdout so
+they are readable in the Argo UI logs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from pathlib import Path
+from typing import Any
+
+from k8s_soar.alert import parse
+from k8s_soar.config import settings
+from k8s_soar.context import collect
+from k8s_soar.kube import kube
+from k8s_soar.verdict import Verdict
+
+from . import act, contain, guard, notify, triage
+
+
+def _json_arg(value: str) -> dict[str, Any]:
+    if not value:
+        return {}
+    data = json.loads(value)
+    return data if isinstance(data, dict) else {}
+
+
+def _write(out: Path, name: str, value: Any) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    (out / name).write_text(text)
+    print(f"{name}: {text}")
+
+
+def cmd_guard(args: argparse.Namespace) -> None:
+    alert = parse(args.alert)
+    decision = guard.decide(alert, kube(), settings())
+    print(f"alert: {alert.short()}")
+    _write(args.out, "decision", decision.as_dict())
+    _write(args.out, "action", decision.action)
+    _write(args.out, "namespace", alert.namespace or "")
+    _write(args.out, "pod", alert.pod or "")
+
+
+def cmd_contain(args: argparse.Namespace) -> None:
+    if args.action != guard.CONTAIN:
+        _write(args.out, "result", {"skipped": f"decision is {args.action!r}; nothing to contain"})
+        return
+    alert = parse(args.alert)
+    try:
+        result = contain.contain(alert, kube(), settings(), args.case)
+    except Exception as exc:
+        # Record the failure for the notify step, then fail the step so it is red in the UI.
+        _write(args.out, "result", {"error": f"containment failed: {type(exc).__name__}: {exc}"})
+        raise
+    _write(args.out, "result", result)
+    # logfmt line parsed by the Grafana "Response" dashboard (Loki unwrap).
+    print(f"metric=containment rule={alert.slug} time_to_contain_seconds={result['latency_seconds']}")
+
+
+def cmd_enrich(args: argparse.Namespace) -> None:
+    alert = parse(args.alert)
+    try:
+        ctx = collect(kube(), settings(), alert.namespace, alert.pod)
+    except Exception as exc:  # evidence is best-effort; the case continues without it
+        logging.getLogger(__name__).exception("enrichment failed")
+        ctx = {"error": f"{type(exc).__name__}: {exc}"}
+    _write(args.out, "context", ctx)
+
+
+def cmd_triage(args: argparse.Namespace) -> None:
+    alert = parse(args.alert)
+    verdict = triage.triage(alert, _json_arg(args.context), _json_arg(args.decision), settings())
+    _write(args.out, "verdict", verdict.model_dump())
+    _write(args.out, "recommended", verdict.approval_default)
+
+
+def cmd_notify(args: argparse.Namespace) -> None:
+    alert = parse(args.alert)
+    verdict_data = _json_arg(args.verdict)
+    verdict = Verdict.model_validate(verdict_data) if verdict_data else Verdict.unavailable("not run")
+    result = notify.notify_all(
+        alert, _json_arg(args.decision), _json_arg(args.contained), verdict, settings(), args.workflow
+    )
+    _write(args.out, "result", result)
+
+
+def cmd_act(args: argparse.Namespace) -> None:
+    _write(args.out, "result", act.run(args.action, args.namespace, args.pod, kube(), settings()))
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="soar-actions", description=__doc__)
+    parser.add_argument("--out", type=Path, default=Path("/tmp/outputs"))  # noqa: S108 - Argo output dir
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("guard", help="decide contain / notify / skip and claim the pod")
+    p.add_argument("--alert", required=True)
+    p.set_defaults(func=cmd_guard)
+
+    p = sub.add_parser("contain", help="quarantine and orphan the pod")
+    p.add_argument("--alert", required=True)
+    p.add_argument("--case", required=True, help="case id (workflow name)")
+    p.add_argument("--action", default=guard.CONTAIN, help="guard decision; anything but 'contain' is a no-op")
+    p.set_defaults(func=cmd_contain)
+
+    p = sub.add_parser("enrich", help="collect read-only evidence")
+    p.add_argument("--alert", required=True)
+    p.set_defaults(func=cmd_enrich)
+
+    p = sub.add_parser("triage", help="ask the AI agent for a verdict")
+    p.add_argument("--alert", required=True)
+    p.add_argument("--context", default="")
+    p.add_argument("--decision", default="")
+    p.set_defaults(func=cmd_triage)
+
+    p = sub.add_parser("notify", help="Slack / Jira / Grafana")
+    p.add_argument("--alert", required=True)
+    p.add_argument("--decision", default="")
+    p.add_argument("--contained", default="")
+    p.add_argument("--verdict", default="")
+    p.add_argument("--workflow", default="")
+    p.set_defaults(func=cmd_notify)
+
+    p = sub.add_parser("act", help="run an analyst-approved action")
+    p.add_argument("--action", required=True, choices=act.ACTIONS)
+    p.add_argument("--namespace", required=True)
+    p.add_argument("--pod", required=True)
+    p.set_defaults(func=cmd_act)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    args = build_parser().parse_args(argv)
+    args.func(args)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

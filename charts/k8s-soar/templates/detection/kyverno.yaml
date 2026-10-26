@@ -1,0 +1,163 @@
+{{- with .Values.detection.kyverno }}
+{{- if .enabled }}
+{{- if ne .podSecurityBaseline "Disabled" }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-pod-security-baseline
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Pod Security Standards (Baseline)
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/description: >-
+      Blocks the known privilege escalations: privileged containers, host
+      namespaces, hostPath volumes, host ports, dangerous capabilities, unsafe
+      sysctls and /proc mounts.
+spec:
+  background: true
+  rules:
+    - name: baseline
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      {{- include "k8s-soar.kyvernoExclude" $ | nindent 6 }}
+      validate:
+        failureAction: {{ .podSecurityBaseline }}
+        podSecurity:
+          level: baseline
+          version: latest
+{{- end }}
+{{- if ne .podSecurityRestricted "Disabled" }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-pod-security-restricted
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Pod Security Standards (Restricted)
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/description: >-
+      Hardening best practices: run as non-root, drop ALL capabilities,
+      RuntimeDefault seccomp, no privilege escalation.
+spec:
+  background: true
+  rules:
+    - name: restricted
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      {{- include "k8s-soar.kyvernoExclude" $ | nindent 6 }}
+      validate:
+        failureAction: {{ .podSecurityRestricted }}
+        podSecurity:
+          level: restricted
+          version: latest
+{{- end }}
+{{- if ne .disallowLatestTag "Disabled" }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-disallow-latest-tag
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/category: Supply Chain
+    policies.kyverno.io/description: Images must be pinned to a tag other than latest (or a digest).
+spec:
+  background: true
+  rules:
+    - name: require-pinned-image
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      {{- include "k8s-soar.kyvernoExclude" $ | nindent 6 }}
+      validate:
+        failureAction: {{ .disallowLatestTag }}
+        message: "Pin images to a version tag or digest; ':latest' and untagged images are not allowed."
+        foreach:
+          - list: "request.object.spec.[ephemeralContainers, initContainers, containers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{`{{ element.image }}`}}"
+                    operator: Equals
+                    value: "*:latest"
+                  - key: "{{`{{ contains(element.image, ':') || contains(element.image, '@') }}`}}"
+                    operator: Equals
+                    value: false
+{{- end }}
+{{- if ne .requireResourceLimits "Disabled" }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-require-resource-limits
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Require Memory Limits
+    policies.kyverno.io/category: Resource Hijacking
+    policies.kyverno.io/description: >-
+      Containers must declare memory limits and CPU requests, which bounds
+      the damage of resource hijacking (crypto miners).
+spec:
+  background: true
+  rules:
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      {{- include "k8s-soar.kyvernoExclude" $ | nindent 6 }}
+      validate:
+        failureAction: {{ .requireResourceLimits }}
+        message: "Containers must set resources.limits.memory and resources.requests.cpu."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                  requests:
+                    cpu: "?*"
+{{- end }}
+{{- if ne .restrictSaTokenAutomount "Disabled" }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-restrict-sa-token-automount
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Restrict Service Account Token Automount
+    policies.kyverno.io/category: Credential Access
+    policies.kyverno.io/description: >-
+      Pods that do not talk to the Kubernetes API should not get a token
+      (stolen tokens enable lateral movement, MITRE T1552.007).
+spec:
+  background: true
+  rules:
+    - name: automount-disabled
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      {{- include "k8s-soar.kyvernoExclude" $ | nindent 6 }}
+      validate:
+        failureAction: {{ .restrictSaTokenAutomount }}
+        message: "Set automountServiceAccountToken: false unless the pod needs the Kubernetes API."
+        pattern:
+          spec:
+            automountServiceAccountToken: false
+{{- end }}
+{{- end }}
+{{- end }}

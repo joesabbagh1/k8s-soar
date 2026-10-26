@@ -1,0 +1,9 @@
+# Argo Events — controller for EventBus/EventSource/Sensor (resources live in
+# the k8s-soar namespace, created by the k8s-soar chart).
+crds:
+  install: true
+  keep: true
+controller:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}

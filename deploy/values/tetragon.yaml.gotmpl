@@ -1,0 +1,20 @@
+# Tetragon — kernel-level observe/enforce. Events are exported as JSON by the
+# export-stdout container, collected by Promtail into Loki.
+tetragon:
+  prometheusPort: 2112
+  # Drop events from platform namespaces and host processes at the source.
+  # Keep in sync with trustedNamespaces in charts/k8s-soar/values.yaml.
+  exportDenyList: |-
+    {"health_check":true}
+    {"namespace":["", "kube-system", "kube-public", "kube-node-lease", "falco", "monitoring", "kyverno", "argo", "argo-events", "k8s-soar", "local-path-storage"]}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+tetragonOperator:
+  enabled: true
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 128Mi}
+crds:
+  # Operator-managed CRDs. Do not switch to "helm" on an existing install.
+  installMethod: operator

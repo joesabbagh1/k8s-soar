@@ -1,0 +1,104 @@
+{{- if .Values.response.enabled }}
+# Network quarantine for any pod labelled {{ .Values.quarantine.labelKey }}={{ .Values.quarantine.labelValue }}.
+#
+# - all traffic from/to other pods and the outside world is denied (deny rules
+#   win over any allow policy the workload already has);
+# - ingress from the node itself (host entity) stays allowed, so kubelet
+#   liveness/readiness probes keep passing and the container is NOT restarted:
+#   the compromised process stays alive for forensics.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: k8s-soar-quarantine
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  description: "k8s-soar: isolate quarantined pods (probes from the node still allowed)"
+  endpointSelector:
+    matchLabels:
+      {{ .Values.quarantine.labelKey }}: {{ .Values.quarantine.labelValue | quote }}
+  ingress:
+    - fromEntities: [host]
+  ingressDeny:
+    - fromEndpoints: [{}]
+    - fromEntities: [world, remote-node, kube-apiserver, ingress, unmanaged]
+  egressDeny:
+    - toEndpoints: [{}]
+    - toEntities: [world, host, remote-node, kube-apiserver, ingress, unmanaged]
+{{- if .Values.quarantine.protectLabel }}
+---
+# Once quarantined, only the responder (release-quarantine action) or a
+# cluster admin can lift it; a compromised workload's own credentials cannot.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-protect-quarantine
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Protect Quarantine Label
+    policies.kyverno.io/category: k8s-soar
+spec:
+  background: false
+  rules:
+    - name: quarantine-label-is-sticky
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              operations: [UPDATE]
+      exclude:
+        any:
+          - subjects:
+              - kind: ServiceAccount
+                name: {{ include "k8s-soar.responderSA" . }}
+                namespace: {{ .Release.Namespace }}
+          {{- range .Values.quarantine.adminGroups }}
+          - subjects:
+              - kind: Group
+                name: {{ . }}
+          {{- end }}
+      preconditions:
+        all:
+          - key: "{{`{{ request.oldObject.metadata.labels.\"`}}{{ .Values.quarantine.labelKey }}{{`\" || '' }}`}}"
+            operator: Equals
+            value: {{ .Values.quarantine.labelValue | quote }}
+      validate:
+        failureAction: Enforce
+        message: "Pod is quarantined by k8s-soar; only the responder or a cluster admin can change the quarantine label."
+        deny:
+          conditions:
+            any:
+              - key: "{{`{{ request.object.metadata.labels.\"`}}{{ .Values.quarantine.labelKey }}{{`\" || '' }}`}}"
+                operator: NotEquals
+                value: {{ .Values.quarantine.labelValue | quote }}
+{{- end }}
+---
+# Defense in depth: the responder must never touch platform namespaces, even if
+# its code or RBAC is wrong.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: k8s-soar-responder-scope
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  background: false
+  rules:
+    - name: no-actions-in-trusted-namespaces
+      match:
+        any:
+          - resources:
+              kinds: [Pod, Deployment/scale, StatefulSet/scale, ReplicaSet/scale]
+              operations: [UPDATE, DELETE]
+              namespaces:
+                {{- toYaml .Values.trustedNamespaces | nindent 16 }}
+            subjects:
+              - kind: ServiceAccount
+                name: {{ include "k8s-soar.responderSA" . }}
+                namespace: {{ .Release.Namespace }}
+      validate:
+        failureAction: Enforce
+        message: "k8s-soar responder may not modify workloads in trusted namespaces."
+        deny: {}
+{{- end }}

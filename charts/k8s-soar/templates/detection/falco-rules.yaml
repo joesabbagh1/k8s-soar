@@ -1,0 +1,22 @@
+{{- if .Values.detection.falco.enabled }}
+# Mounted by the Falco DaemonSet at /etc/falco/k8s-soar.d (see deploy/values/falco.yaml.gotmpl).
+# Falco watches the directory and hot-reloads rules when this ConfigMap changes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.detection.falco.configMapName }}
+  namespace: {{ .Values.detection.falco.namespace }}
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+data:
+  {{- range $path, $_ := .Files.Glob "files/falco-rules/*.yaml" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+  # Generated from .Values.trustedNamespaces (single source of truth).
+  05-trusted-namespaces.yaml: |
+    - list: k8s_soar_trusted_namespaces
+      items: {{ toJson .Values.trustedNamespaces }}
+      override:
+        items: replace
+{{- end }}

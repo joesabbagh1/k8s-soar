@@ -1,0 +1,116 @@
+# kube-prometheus-stack — Prometheus, Alertmanager, Grafana.
+prometheusOperator:
+  admissionWebhooks: {enabled: false}
+  tls: {enabled: false}
+
+prometheus:
+  prometheusSpec:
+    retention: {{ .Values.observability.prometheusRetention }}
+    # Pick up every ServiceMonitor/PodMonitor/PrometheusRule, not only ones
+    # labelled for this release.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    resources:
+      requests: {cpu: 200m, memory: 512Mi}
+      limits: {memory: 1Gi}
+
+# Export the quarantine label so dashboards can count quarantined pods.
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[security.quarantine,k8s-soar.io/case]
+
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeScheduler: false
+    kubeControllerManager: false
+
+alertmanager:
+  enabled: true
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: [alertname, namespace]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: "null"
+      routes:
+        # Critical cluster alerts open a k8s-soar case (notify only).
+        - receiver: k8s-soar
+          matchers: ['severity="critical"']
+    receivers:
+      - name: "null"
+      - name: k8s-soar
+        webhook_configs:
+          - url: http://soar-webhook-eventsource-svc.k8s-soar.svc.cluster.local:12000/alertmanager
+            send_resolved: false
+
+grafana:
+  enabled: true
+  admin:
+    existingSecret: {{ .Values.observability.grafanaAdminSecret }}
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki.monitoring.svc.cluster.local:3100
+      jsonData:
+        maxLines: 1000
+  alerting:
+    rules.yaml:
+      apiVersion: 1
+      groups:
+        - orgId: 1
+          name: k8s-soar
+          folder: k8s-soar
+          interval: 1m
+          rules:
+            - uid: k8ssoar-finding
+              title: k8s-soar finding
+              condition: C
+              data:
+                - refId: A
+                  relativeTimeRange: {from: 300, to: 0}
+                  datasourceUid: loki
+                  model:
+                    editorMode: code
+                    expr: 'sum(count_over_time({namespace="falco"} |= "K8sSoar" [5m]))'
+                    queryType: instant
+                    refId: A
+                - refId: C
+                  relativeTimeRange: {from: 0, to: 0}
+                  datasourceUid: __expr__
+                  model:
+                    type: threshold
+                    expression: A
+                    refId: C
+                    conditions:
+                      - evaluator: {type: gt, params: [0]}
+                        operator: {type: and}
+                        query: {params: [C]}
+                        reducer: {type: last, params: []}
+                        type: query
+              noDataState: OK
+              execErrState: Alerting
+              for: 0s
+              annotations:
+                summary: A k8s-soar Falco rule fired in the last 5 minutes.
+                description: Open the "k8s-soar — Findings" dashboard and the Argo UI for the case.
+              labels:
+                severity: warning
+                team: k8s-soar

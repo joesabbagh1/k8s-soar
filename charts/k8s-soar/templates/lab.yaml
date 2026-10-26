@@ -1,0 +1,10 @@
+{{- if .Values.lab.enabled }}
+# Target namespace for the k8s-soar-scenarios attack simulations.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.lab.namespace }}
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+    k8s-soar.io/lab: "true"
+{{- end }}

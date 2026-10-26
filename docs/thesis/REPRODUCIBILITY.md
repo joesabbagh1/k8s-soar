@@ -1,35 +1,22 @@
-# Reproducibility Appendix
+# Reproducibility appendix
 
 ## Full bare-metal path
 
 ```bash
 git clone https://github.com/joesabbagh1/k8s-soar.git
-cd k8s-soar
-
-cp ansible/inventory.example.ini ansible/inventory.ini
-cp ansible/group_vars/all.yml.example ansible/group_vars/all.yml
-# Edit inventory and vars for client hardware
-
-./ansible/setup.sh
-./scripts/verify-stack.sh
-
-# Attack simulations — manual, run individually when ready:
-# ./scenarios/01-shell-in-container/run.sh
+cd k8s-soar/deploy/ansible
+./setup.sh --pre-setup-only           # renders inventory.ini and group_vars/all.yml
+# edit group_vars/all.yml: k8s_soar_env: lab
+./setup.sh
+cd ../.. && make status && make smoke-test
 ```
 
-## Helm-only (kubeadm already done, no CNI)
-
-Use when kubeadm is initialized but Cilium is not yet installed:
+## Existing cluster
 
 ```bash
-helm repo add falcosecurity https://falcosecurity.github.io/charts
-helm repo add cilium https://helm.cilium.io/
-helm repo add kyverno https://kyverno.github.io/kyverno/
-helm repo update
-
-./ansible/setup.sh
-
-# Attack simulations — manual, run individually when ready
+make preflight
+make deploy ENV=lab
+make status
 ```
 
 ## Evidence collection
@@ -40,14 +27,15 @@ Store exports under `evidence/` (gitignored):
 evidence/
   baseline/YYYY-MM-DD.md
   scenario-01/falco.log
+  scenario-01/case.yaml          # kubectl get workflow -n k8s-soar <case> -o yaml
   scenario-01/kyverno-report.yaml
-  ...
 ```
 
 ## Version pinning
 
-Record in thesis:
+Every component version is pinned in `deploy/helmfile.yaml.gotmpl`; record:
 
-- `k8s-soar` chart version / git SHA
+- k8s-soar git SHA and chart `appVersion`
 - Kubernetes version (`kubectl version`)
-- Ansible `k8s_version` var from `group_vars/all.yml`
+- `k8s_version` / `k8s_package_version` from `deploy/ansible/group_vars/all.yml`
+- AI provider and model if triage was enabled (`GET /config` on soar-agent)

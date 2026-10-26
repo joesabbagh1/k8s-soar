@@ -1,0 +1,95 @@
+# k8s-soar — one entry point for everything. `make help` lists targets.
+SHELL := /usr/bin/env bash
+ENV ?= default
+HELMFILE := helmfile -f deploy/helmfile.yaml.gotmpl -e $(ENV)
+SOAR_NS := k8s-soar
+REGISTRY ?= ghcr.io/joesabbagh1
+TAG ?= $(shell awk '/^appVersion:/ {gsub(/"/,"",$$2); print $$2}' charts/k8s-soar/Chart.yaml)
+PY := services/soar/.venv/bin
+
+.DEFAULT_GOAL := help
+
+##@ Install
+bootstrap: ## Bare metal: kubeadm cluster + full stack (runs deploy/ansible/setup.sh)
+	cd deploy/ansible && ./setup.sh
+
+preflight: ## Check tools and cluster prerequisites
+	./scripts/preflight.sh
+
+secrets: ## Create/update Kubernetes Secrets from deploy/secrets.env
+	./scripts/secrets.sh
+
+ai-key: ## Store the AI provider key: make ai-key KEY=sk-...
+	@test -n "$(KEY)" || (echo "usage: make ai-key KEY=<provider api key>"; exit 1)
+	AI_API_KEY="$(KEY)" K8S_SOAR_SECRETS_FILE=/dev/null ./scripts/secrets.sh
+	kubectl rollout restart deploy/soar-agent -n $(SOAR_NS) 2>/dev/null || true
+
+diff: ## Show what `make deploy` would change
+	$(HELMFILE) diff
+
+deploy: secrets ## Install/upgrade the whole stack on the current cluster (ENV=default|lab)
+	$(HELMFILE) apply
+
+deploy-soar: ## Upgrade only the k8s-soar chart (rules, policies, response, agent)
+	$(HELMFILE) -l name=k8s-soar apply
+
+destroy: ## Uninstall every release (CRDs and namespaces are kept)
+	$(HELMFILE) destroy
+
+##@ Operate
+status: ## Health check of the deployed stack
+	./scripts/verify.sh
+
+verify: status
+
+cases: ## List SOAR cases (Argo workflows)
+	@kubectl get workflows -n $(SOAR_NS) --sort-by=.metadata.creationTimestamp \
+	  -o custom-columns='CASE:.metadata.name,RULE:.metadata.labels.k8s-soar\.io/rule,NAMESPACE:.metadata.labels.k8s-soar\.io/namespace,POD:.metadata.labels.k8s-soar\.io/pod,STATUS:.status.phase,STARTED:.status.startedAt'
+
+quarantined: ## List quarantined pods
+	@kubectl get pods -A -l security.quarantine=true -L k8s-soar.io/case
+
+argo-ui: ## Open the case UI on http://localhost:2746
+	@echo "Argo UI: http://localhost:2746  (namespace: $(SOAR_NS))"
+	kubectl port-forward -n argo svc/argo-workflows-server 2746:2746
+
+grafana: ## Open Grafana on http://localhost:3000
+	@echo "Grafana: http://localhost:3000  user: admin  password: make grafana-password"
+	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+
+grafana-password: ## Print the Grafana admin password
+	@kubectl get secret -n monitoring grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo
+
+smoke-test: ## End-to-end test: trigger a rule and check containment
+	./scripts/smoke-test.sh
+
+##@ Develop
+venv: $(PY)/pytest ## Create the Python dev environment
+$(PY)/pytest:
+	python3 -m venv services/soar/.venv
+	$(PY)/pip install -q -e "services/soar[agent,dev]"
+
+test: venv ## Unit tests (Python services)
+	cd services/soar && .venv/bin/pytest -q
+
+lint: venv ## Lint Python, shell, chart and helmfile
+	cd services/soar && .venv/bin/ruff check src tests && .venv/bin/ruff format --check src tests
+	shellcheck -x scripts/*.sh scripts/lab/*.sh deploy/ansible/*.sh deploy/ansible/lib/*.sh
+	helm lint charts/k8s-soar
+	helm template k8s-soar charts/k8s-soar --set ai.enabled=true --set lab.enabled=true >/dev/null
+
+images: ## Build both service images (REGISTRY=..., TAG=...)
+	docker build --target actions -t $(REGISTRY)/k8s-soar-actions:$(TAG) services/soar
+	docker build --target agent -t $(REGISTRY)/k8s-soar-agent:$(TAG) services/soar
+
+push: images ## Push both service images
+	docker push $(REGISTRY)/k8s-soar-actions:$(TAG)
+	docker push $(REGISTRY)/k8s-soar-agent:$(TAG)
+
+help:
+	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target> [ENV=default|lab]\n"} \
+	  /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } \
+	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+
+.PHONY: bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
+	argo-ui grafana grafana-password smoke-test venv test lint images push help

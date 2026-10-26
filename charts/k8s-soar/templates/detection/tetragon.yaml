@@ -1,0 +1,140 @@
+{{- with .Values.detection.tetragon }}
+{{- if .enabled }}
+{{- /*
+Observe-only policies emit events (no action). Tetragon exports them through
+its export-stdout container; Promtail ships them to Loki, where case
+enrichment and the AI agent query them per pod. Trusted namespaces are
+dropped at export time (exportDenyList in deploy/values/tetragon.yaml.gotmpl).
+*/}}
+{{- if .observe.sensitiveFileAccess }}
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: k8s-soar-observe-sensitive-files
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+spec:
+  kprobes:
+    - call: security_file_permission
+      syscall: false
+      return: true
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      returnArg:
+        index: 0
+        type: int
+      returnArgAction: Post
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Prefix
+              values:
+                - /etc/shadow
+                - /etc/gshadow
+                - /etc/sudoers
+                - /root/.ssh
+                - /var/run/secrets/kubernetes.io/serviceaccount
+                - /run/secrets/kubernetes.io/serviceaccount
+{{- end }}
+{{- if .observe.outboundConnections }}
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: k8s-soar-observe-egress
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+spec:
+  kprobes:
+    - call: tcp_connect
+      syscall: false
+      args:
+        - index: 0
+          type: sock
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: NotDAddr
+              values:
+                {{- toYaml .observe.internalCidrs | nindent 16 }}
+{{- end }}
+{{- if .observe.namespaceEscapes }}
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: k8s-soar-observe-namespace-escapes
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+spec:
+  kprobes:
+    - call: sys_setns
+      syscall: true
+      args:
+        - index: 0
+          type: int
+        - index: 1
+          type: int
+    - call: sys_unshare
+      syscall: true
+      args:
+        - index: 0
+          type: int
+    - call: sys_mount
+      syscall: true
+      args:
+        - index: 0
+          type: string
+        - index: 1
+          type: string
+        - index: 2
+          type: string
+{{- end }}
+{{- if .enforce.enabled }}
+---
+# In-kernel prevention: SIGKILL any process that opens sensitive host files for
+# writing, in pods that opted in with the enforce label.
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: k8s-soar-enforce-sensitive-writes
+  labels:
+    {{- include "k8s-soar.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{ .enforce.podLabel }}: "true"
+  kprobes:
+    - call: security_file_permission
+      syscall: false
+      args:
+        - index: 0
+          type: file
+        - index: 1
+          type: int
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: Prefix
+              values:
+                - /etc/shadow
+                - /etc/gshadow
+                - /etc/sudoers
+                - /etc/passwd
+                - /root/.ssh
+                - /usr/bin
+                - /usr/sbin
+                - /bin
+                - /sbin
+            - index: 1
+              operator: Mask
+              values:
+                - "2"   # MAY_WRITE
+          matchActions:
+            - action: Sigkill
+{{- end }}
+{{- end }}
+{{- end }}

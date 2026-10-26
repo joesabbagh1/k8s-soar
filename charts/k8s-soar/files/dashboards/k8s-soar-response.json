@@ -1,0 +1,291 @@
+{
+  "uid": "k8s-soar-response",
+  "title": "k8s-soar \u2014 Response",
+  "tags": [
+    "k8s-soar"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "editable": true,
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "name": "k8s-soar cases",
+        "type": "dashboard",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [
+            "k8s-soar"
+          ],
+          "type": "tags"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cases opened",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"k8s-soar\", container=\"main\"} |= \"alert: [\" [$__range]))",
+          "queryType": "range"
+        }
+      ],
+      "description": "Workflows that passed the Sensor and ran the guard step."
+    },
+    {
+      "id": 2,
+      "title": "Pods contained",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum(count_over_time({namespace=\"k8s-soar\", container=\"main\"} |= \"metric=containment\" [$__range]))",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Time to contain (p95)",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "quantile_over_time(0.95, {namespace=\"k8s-soar\", container=\"main\"} |= \"metric=containment\" | logfmt | unwrap time_to_contain_seconds [$__range]) by ()",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "description": "Falco event time to quarantine label applied."
+    },
+    {
+      "id": 4,
+      "title": "Currently quarantined pods",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "count(kube_pod_labels{label_security_quarantine=\"true\"}) or vector(0)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Containments over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (rule) (count_over_time({namespace=\"k8s-soar\", container=\"main\"} |= \"metric=containment\" | logfmt [5m]))",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Time to contain",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "avg_over_time({namespace=\"k8s-soar\", container=\"main\"} |= \"metric=containment\" | logfmt | unwrap time_to_contain_seconds [5m]) by (rule)",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "AI verdicts",
+      "type": "piechart",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (verdict) (count_over_time({namespace=\"k8s-soar\"} |= \"\\\"event\\\": \\\"triage\\\"\" | regexp \"\\\"verdict\\\": \\\\{\\\"verdict\\\": \\\"(?P<verdict>[a-z_]+)\\\"\" [$__range]))",
+          "queryType": "range"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Case workflows by status",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 16,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (status) (increase(argo_workflows_k8s_soar_cases_total[1h]))"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Responder activity (all steps)",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{namespace=\"k8s-soar\", container=\"main\"}",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending"
+      }
+    }
+  ]
+}

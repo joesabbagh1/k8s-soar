@@ -31,7 +31,7 @@ fi
 if command -v helm >/dev/null 2>&1; then
   ok "helm found"
 else
-  warn "helm not found (required for install)"
+  bad "helm not found (required for install)"
 fi
 
 # --- cluster access ---
@@ -42,7 +42,8 @@ else
 fi
 
 # --- kubernetes version ---
-if ver=$(kubectl version --short 2>/dev/null | grep 'Server Version' | sed 's/.*v//; s/+.*//'); then
+# (--short was removed from kubectl; parse the JSON instead)
+if ver=$(kubectl version -o json 2>/dev/null | sed -n 's/.*"gitVersion": *"v\([0-9.]*\).*/\1/p' | tail -1) && [[ -n "$ver" ]]; then
   minor=$(echo "$ver" | cut -d. -f2)
   if [[ "$minor" -ge "$MIN_K8S_MINOR" ]]; then
     ok "Kubernetes v${ver} (>= 1.${MIN_K8S_MINOR})"
@@ -67,14 +68,16 @@ if kubectl get nodes >/dev/null 2>&1; then
 fi
 
 # --- kernel version on nodes (best effort via kubectl) ---
-if kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kernelVersion}{"\n"}{end}' 2>/dev/null | while read -r kv; do
-  kver=$(echo "$kv" | sed 's/-.*//')
+# (process substitution, not a pipe, so ok/warn counters survive the loop)
+while read -r kv; do
+  [[ -n "$kv" ]] || continue
+  kver=${kv%%-*}
   if [[ "$(printf '%s\n' "$kver" "$MIN_KERNEL" | sort -V | head -1)" == "$MIN_KERNEL" ]]; then
     ok "node kernel ${kv}"
   else
     warn "node kernel ${kv} — recommend >= ${MIN_KERNEL} for Falco/Tetragon eBPF"
   fi
-done; then true; fi
+done < <(kubectl get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.kernelVersion}{"\n"}{end}' 2>/dev/null || true)
 
 # --- expect fresh kubeadm cluster (no CNI until k8s-soar installs Cilium) ---
 if kubectl get daemonset -n kube-system cilium 2>/dev/null | grep -q cilium; then
@@ -85,14 +88,17 @@ else
   ok "no CNI yet — ready for k8s-soar Helm install (Cilium)"
 fi
 
-# --- helm repos (informational) ---
-for repo in falcosecurity cilium kyverno; do
-  if helm repo list 2>/dev/null | grep -q "$repo"; then
-    ok "helm repo '${repo}' configured"
-  else
-    warn "helm repo '${repo}' missing — run: helm repo add ..."
-  fi
-done
+# --- operator tooling ---
+if command -v helmfile >/dev/null 2>&1; then
+  ok "helmfile found"
+else
+  bad "helmfile not found (https://github.com/helmfile/helmfile/releases)"
+fi
+if helm plugin list 2>/dev/null | grep -q '^diff'; then
+  ok "helm-diff plugin installed"
+else
+  warn "helm-diff plugin missing — run: helmfile init"
+fi
 
 echo ""
 echo "=== summary: ${pass} passed, ${warn} warnings, ${fail} failed ==="

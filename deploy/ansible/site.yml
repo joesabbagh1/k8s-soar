@@ -1,0 +1,337 @@
+---
+# k8s-soar bare-metal bootstrap.
+#
+#   1. preflight        kernel / eBPF checks
+#   2. prepare nodes    swap, kernel modules, containerd, kubeadm/kubelet/kubectl
+#   3. control plane    kubeadm init (+ worker join)
+#   4. operator         kubeconfig on this machine
+#   5. stack            pinned helm + helmfile, secrets, `helmfile apply`, verify
+#
+# Re-running is safe: every step is idempotent and nothing is wiped unless
+# nuclear_wipe: true.
+
+- name: "1/5 Preflight — verify nodes meet k8s-soar requirements"
+  hosts: k8s
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Assert kernel version meets minimum for eBPF stack
+      ansible.builtin.assert:
+        that:
+          - ansible_kernel is version(min_kernel_version, '>=')
+        fail_msg: "Kernel {{ ansible_kernel }} < {{ min_kernel_version }} — Falco/Tetragon require a newer kernel"
+        success_msg: "Kernel {{ ansible_kernel }} OK on {{ inventory_hostname }}"
+
+    - name: Check /sys/fs/bpf is mounted (eBPF)
+      ansible.builtin.stat:
+        path: /sys/fs/bpf
+      register: bpf_mount
+      failed_when: not bpf_mount.stat.exists
+
+- name: "2/5 Prepare nodes — OS and Kubernetes packages"
+  hosts: k8s
+  become: true
+  handlers:
+    - name: Restart containerd
+      ansible.builtin.systemd:
+        name: containerd
+        state: restarted
+
+  tasks:
+    - name: Wipe previous k3s/kubeadm installation (nuclear_wipe=true)
+      ansible.builtin.shell: |
+        if [ -f /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh; fi
+        if [ -f /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh; fi
+        kubeadm reset -f || true
+        rm -rf /etc/rancher /var/lib/rancher /var/lib/kubelet /etc/kubernetes /var/lib/etcd /etc/cni/net.d
+        ip link delete cni0 || true
+        ip link delete flannel.1 || true
+        iptables -F && iptables -t nat -F && iptables -X
+      changed_when: true
+      when: nuclear_wipe | bool
+
+    - name: Disable swap now
+      ansible.builtin.command: swapoff -a
+      when: ansible_swaptotal_mb | int > 0
+      changed_when: true
+
+    - name: Disable swap permanently
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
+
+    - name: Load kernel modules now
+      community.general.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop: [overlay, br_netfilter]
+
+    - name: Load kernel modules at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+        mode: "0644"
+
+    - name: Configure sysctl for Kubernetes networking
+      ansible.posix.sysctl:
+        name: "{{ item }}"
+        value: "1"
+        sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+        reload: true
+      loop:
+        - net.bridge.bridge-nf-call-iptables
+        - net.ipv4.ip_forward
+
+    - name: Install node packages
+      ansible.builtin.apt:
+        name: [containerd, apt-transport-https, ca-certificates, curl, gpg, conntrack, ethtool, socat, ipset]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check containerd uses the systemd cgroup driver
+      ansible.builtin.command: grep -q 'SystemdCgroup = true' /etc/containerd/config.toml
+      register: containerd_cgroup
+      failed_when: false
+      changed_when: false
+
+    - name: Write containerd config with SystemdCgroup (only when missing)
+      ansible.builtin.shell: |
+        set -o pipefail
+        mkdir -p /etc/containerd
+        containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' > /etc/containerd/config.toml
+      args:
+        executable: /bin/bash
+      when: containerd_cgroup.rc != 0
+      changed_when: true
+      notify: Restart containerd
+
+    - name: Add Kubernetes apt signing key
+      ansible.builtin.shell: |
+        set -o pipefail
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/Release.key \
+          | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+      args:
+        executable: /bin/bash
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Add Kubernetes apt repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{{ k8s_version }}/deb/ /\n"
+        mode: "0644"
+      register: k8s_repo
+
+    - name: Refresh apt cache after adding Kubernetes repository
+      ansible.builtin.apt:
+        update_cache: true
+      when: k8s_repo.changed
+
+    - name: Install kubelet, kubeadm, kubectl (pinned; never upgraded by re-runs)
+      ansible.builtin.apt:
+        name: "{{ ['kubelet', 'kubeadm', 'kubectl'] | map('regex_replace', '$', ('=' ~ k8s_package_version) if k8s_package_version else '') | list }}"
+        state: present
+        allow_change_held_packages: true
+
+    - name: Hold Kubernetes package versions
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: [kubelet, kubeadm, kubectl]
+
+    - name: Flush handlers (restart containerd before kubeadm)
+      ansible.builtin.meta: flush_handlers
+
+- name: "3/5 Initialize control plane"
+  hosts: master
+  become: true
+  tasks:
+    - name: Initialize cluster with kubeadm
+      ansible.builtin.command: >-
+        kubeadm init
+        --pod-network-cidr={{ pod_network_cidr }}
+        --apiserver-advertise-address={{ apiserver_advertise_address }}
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Wait for API server
+      ansible.builtin.wait_for:
+        host: "{{ apiserver_advertise_address }}"
+        port: 6443
+        delay: 10
+        timeout: 180
+
+    - name: Fetch kubeconfig to operator machine
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "{{ kubeconfig_dest }}"
+        flat: true
+
+    - name: Generate worker join command
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: join_cmd
+      until: join_cmd is not failed
+      retries: 6
+      delay: 15
+      changed_when: false
+      when: groups['workers'] | default([]) | length > 0
+
+    - name: Store join command for workers
+      ansible.builtin.add_host:
+        name: KUBE_JOIN_HOLDER
+        command: "{{ join_cmd.stdout }}"
+      when: groups['workers'] | default([]) | length > 0
+
+    - name: Allow scheduling on control-plane for single-node clusters
+      ansible.builtin.command: kubectl taint nodes --all node-role.kubernetes.io/control-plane- --overwrite
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: taint
+      failed_when: taint.rc != 0 and 'not found' not in taint.stderr
+      changed_when: "'untainted' in taint.stdout"
+      when:
+        - allow_control_plane_scheduling | bool
+        - groups['workers'] | default([]) | length == 0
+
+- name: "3/5 Join worker nodes"
+  hosts: workers
+  become: true
+  serial: 1
+  tasks:
+    - name: Join cluster
+      ansible.builtin.command: "{{ hostvars['KUBE_JOIN_HOLDER']['command'] }}"
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+- name: "4/5 Configure operator workstation"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Patch API server address in fetched kubeconfig
+      ansible.builtin.replace:
+        path: "{{ kubeconfig_dest }}"
+        regexp: '127\.0\.0\.1:6443'
+        replace: "{{ apiserver_advertise_address }}:6443"
+      when: configure_localhost | bool
+
+    - name: Restrict kubeconfig permissions
+      ansible.builtin.file:
+        path: "{{ kubeconfig_dest }}"
+        mode: "0600"
+
+    - name: Write cluster env file
+      ansible.builtin.copy:
+        dest: "{{ kubeconfig_env_file }}"
+        mode: "0600"
+        content: |
+          export KUBECONFIG={{ kubeconfig_dest }}
+      when: configure_localhost | bool
+
+    - name: Source cluster env file from shell profiles
+      ansible.builtin.lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/{{ item }}"
+        line: '[ -f "{{ kubeconfig_env_file }}" ] && . "{{ kubeconfig_env_file }}"'
+        create: "{{ item == '.bashrc' }}"
+        mode: "0644"
+      loop: [.bashrc, .zshrc]
+      failed_when: false
+      when: configure_localhost | bool
+
+- name: "5/5 Install k8s-soar stack"
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    tools_dir: "{{ lookup('env', 'HOME') }}/.local/bin"
+    os: "{{ ansible_system | lower }}"
+    arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64', 'arm64': 'arm64'}[ansible_architecture] }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_dest }}"
+    PATH: "{{ tools_dir }}:{{ ansible_env.PATH }}"
+  tasks:
+    - name: Skip stack install when disabled
+      ansible.builtin.meta: end_play
+      when: not (install_k8s_soar | bool)
+
+    - name: Ensure tools directory exists
+      ansible.builtin.file:
+        path: "{{ tools_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Check installed helm version
+      ansible.builtin.command: helm version --template '{{ "{{" }} .Version {{ "}}" }}'
+      register: helm_current
+      failed_when: false
+      changed_when: false
+
+    - name: Install pinned helm {{ helm_version }}
+      ansible.builtin.unarchive:
+        src: "https://get.helm.sh/helm-{{ helm_version }}-{{ os }}-{{ arch }}.tar.gz"
+        dest: "{{ tools_dir }}"
+        remote_src: true
+        extra_opts: [--strip-components=1, "{{ os }}-{{ arch }}/helm"]
+        mode: "0755"
+      when: helm_current.stdout != helm_version
+
+    - name: Check installed helmfile version
+      ansible.builtin.command: helmfile --version
+      register: helmfile_current
+      failed_when: false
+      changed_when: false
+
+    - name: Install pinned helmfile {{ helmfile_version }}
+      ansible.builtin.unarchive:
+        src: "https://github.com/helmfile/helmfile/releases/download/v{{ helmfile_version }}/helmfile_{{ helmfile_version }}_{{ os }}_{{ arch }}.tar.gz"
+        dest: "{{ tools_dir }}"
+        remote_src: true
+        include: [helmfile]
+        mode: "0755"
+      when: helmfile_version not in helmfile_current.stdout | default('')
+
+    - name: Install helm plugins required by helmfile (helm-diff)
+      ansible.builtin.command: helmfile init --force
+      register: helmfile_init
+      changed_when: "'installed' in helmfile_init.stdout | lower"
+
+    - name: Wait for nodes to register (NotReady until Cilium is installed)
+      ansible.builtin.command: kubectl get nodes -o name
+      register: node_list
+      until: node_list.stdout_lines | length > 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Install local-path-provisioner (bare-metal StorageClass for Loki)
+      ansible.builtin.command: >-
+        kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/{{ local_path_provisioner_version }}/deploy/local-path-storage.yaml
+      register: lpp
+      changed_when: "'created' in lpp.stdout or 'configured' in lpp.stdout"
+
+    - name: Mark local-path as the default StorageClass
+      ansible.builtin.command: >-
+        kubectl annotate storageclass local-path storageclass.kubernetes.io/is-default-class=true --overwrite
+      changed_when: false
+
+    - name: Create k8s-soar secrets (keeps existing values; generates Grafana password once)
+      ansible.builtin.command: "{{ k8s_soar_root }}/scripts/secrets.sh"
+      register: secrets_out
+      changed_when: "'created' in secrets_out.stdout"
+
+    - name: Deploy the stack with helmfile ({{ k8s_soar_env }} environment)
+      ansible.builtin.command: helmfile -f deploy/helmfile.yaml.gotmpl -e {{ k8s_soar_env }} apply --suppress-diff
+      args:
+        chdir: "{{ k8s_soar_root }}"
+      register: helmfile_apply
+      changed_when: "'UPDATED RELEASES' in helmfile_apply.stdout"
+
+    - name: Verify the stack
+      ansible.builtin.command: ./scripts/verify.sh
+      args:
+        chdir: "{{ k8s_soar_root }}"
+      changed_when: false

@@ -1,0 +1,131 @@
+{{- if .Values.response.enabled }}
+# Event pipeline:  falcosidekick / Alertmanager --HTTP--> EventSource
+#                  --> EventBus (NATS JetStream, buffers bursts and restarts)
+#                  --> Sensor (filters) --> Workflow from falco-response template
+apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: soar
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  jetstream:
+    version: {{ .Values.response.eventBus.jetstreamVersion | quote }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: {{ include "k8s-soar.eventSource" . }}
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  eventBusName: soar
+  service:
+    ports:
+      - port: {{ .Values.response.webhookPort }}
+        targetPort: {{ .Values.response.webhookPort }}
+  webhook:
+    # falcosidekick webhook output -> http://{{ include "k8s-soar.webhookService" . }}.{{ .Release.Namespace }}:{{ .Values.response.webhookPort }}/falco
+    falco:
+      port: {{ .Values.response.webhookPort | quote }}
+      endpoint: /falco
+      method: POST
+    # Alertmanager webhook receiver -> .../alertmanager
+    alertmanager:
+      port: {{ .Values.response.webhookPort | quote }}
+      endpoint: /alertmanager
+      method: POST
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: soar-router
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  eventBusName: soar
+  template:
+    serviceAccountName: soar-sensor
+  dependencies:
+    # Falco events that k8s-soar rules route to SOAR (soar_contain /
+    # soar_notify tags), plus any stock Falco rule at Critical or above.
+    - name: falco
+      eventSourceName: {{ include "k8s-soar.eventSource" . }}
+      eventName: falco
+      filters:
+        dataLogicalOperator: or
+        data:
+          - path: body.tags
+            type: string
+            value:
+              - '.*"soar_(contain|notify)".*'
+          - path: body.priority
+            type: string
+            value:
+              - '(?i)^(critical|alert|emergency)$'
+    - name: alertmanager
+      eventSourceName: {{ include "k8s-soar.eventSource" . }}
+      eventName: alertmanager
+      filters:
+        data:
+          - path: body.status
+            type: string
+            value: [firing]
+  triggers:
+    {{- range $dep := list "falco" "alertmanager" }}
+    - template:
+        name: {{ $dep }}-case
+        conditions: {{ $dep }}
+        argoWorkflow:
+          operation: submit
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: {{ $dep }}-
+                labels:
+                  k8s-soar.io/source: {{ $dep }}
+              spec:
+                workflowTemplateRef:
+                  name: falco-response
+                arguments:
+                  parameters:
+                    - name: alert
+                      value: "{}"
+          parameters:
+            - src:
+                dependencyName: {{ $dep }}
+                dataKey: body
+              dest: spec.arguments.parameters.0.value
+            {{- if eq $dep "falco" }}
+            # Readable case names and labels in the Argo UI, e.g.
+            # k8ssoar-reverse-shell-x7k2p  {namespace: shop, pod: web-5d9c-abcde}
+            - src:
+                dependencyName: falco
+                dataTemplate: {{ `'{{ regexReplaceAll "[^a-z0-9]+" (lower .Input.body.rule) "-" | trunc 40 | trimSuffix "-" }}-'` }}
+              dest: metadata.generateName
+            - src:
+                dependencyName: falco
+                dataTemplate: {{ `'{{ regexReplaceAll "[^a-z0-9]+" (lower .Input.body.rule) "-" | trunc 63 | trimSuffix "-" }}'` }}
+              dest: metadata.labels.k8s-soar\.io/rule
+            - src:
+                dependencyName: falco
+                dataTemplate: {{ `'{{ index .Input.body.output_fields "k8s.ns.name" | default "none" | toString | trunc 63 }}'` }}
+              dest: metadata.labels.k8s-soar\.io/namespace
+            - src:
+                dependencyName: falco
+                dataTemplate: {{ `'{{ index .Input.body.output_fields "k8s.pod.name" | default "none" | toString | trunc 63 | trimSuffix "-" }}'` }}
+              dest: metadata.labels.k8s-soar\.io/pod
+            - src:
+                dependencyName: falco
+                dataTemplate: {{ `'{{ lower .Input.body.priority }}'` }}
+              dest: metadata.labels.k8s-soar\.io/priority
+            {{- end }}
+      rateLimit:
+        unit: Second
+        requestsPerUnit: {{ $.Values.response.rateLimitPerSecond }}
+      retryStrategy:
+        steps: 3
+    {{- end }}
+{{- end }}

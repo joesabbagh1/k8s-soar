@@ -1,0 +1,27 @@
+# Argo Workflows — runs one Workflow per SOAR case; the UI is the case view.
+crds:
+  install: true
+  keep: true
+workflow:
+  serviceAccount:
+    create: false   # the k8s-soar chart creates the soar-responder SA
+  rbac:
+    create: false
+controller:
+  workflowNamespaces:
+    - k8s-soar
+  {{- if .Values.observability.enabled }}
+  metricsConfig:
+    enabled: true
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
+  {{- end }}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+server:
+  enabled: true
+  authModes:
+    - {{ .Values.argo.authMode }}

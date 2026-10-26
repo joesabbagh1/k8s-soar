@@ -1,0 +1,40 @@
+# k8s-soar — Discovery (TA0007) and Lateral Movement (TA0008)
+
+- rule: K8sSoar Network Recon Tool
+  desc: Network scanning / raw-socket tooling run inside a workload container.
+  condition: spawned_process and k8s_soar_workload and proc.name in (k8s_soar_network_tools)
+  output: >
+    Network tool executed in container
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1046]
+
+- rule: K8sSoar Kubernetes Client In Container
+  desc: >
+    kubectl or another Kubernetes/runtime client ran inside a workload
+    container. Common first step after token theft to enumerate the cluster.
+  condition: spawned_process and k8s_soar_workload and proc.name in (k8s_soar_k8s_clients)
+  output: >
+    Kubernetes client executed in container
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
+
+- rule: K8sSoar API Server Access From Shell Tool
+  desc: curl/wget pointed at the Kubernetes API from a workload container.
+  condition: >
+    spawned_process and k8s_soar_workload and proc.name in (curl, wget)
+    and (proc.cmdline contains "kubernetes.default"
+         or proc.cmdline contains "/api/v1/"
+         or proc.cmdline contains "/apis/")
+  output: >
+    API server queried with shell tool
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: ERROR
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
