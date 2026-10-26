@@ -1,0 +1,57 @@
+name: Release
+
+# Tag vX.Y.Z -> images ghcr.io/<owner>/k8s-soar-{actions,agent}:X.Y.Z and the
+# chart oci://ghcr.io/<owner>/charts/k8s-soar:X.Y.Z (appVersion X.Y.Z, which is
+# the image tag the chart uses by default).
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  images:
+    name: Service images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [actions, agent]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/soar
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/k8s-soar-${{ matrix.target }}:${{ steps.version.outputs.version }}
+
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.0
+      - name: Package and push
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          helm package charts/k8s-soar --version "$version" --app-version "$version" -d dist
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push "dist/k8s-soar-${version}.tgz" "oci://${{ env.REGISTRY }}/charts"

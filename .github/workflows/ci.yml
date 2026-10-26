@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.19.0
+  HELMFILE_VERSION: 1.1.7
+  FALCO_VERSION: 0.41.0
+  KUBECONFORM_VERSION: v0.6.7
+
+jobs:
+  python:
+    name: Services (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/soar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[agent,dev]"
+      - run: ruff check src tests
+      - run: ruff format --check src tests
+      - run: pytest -q
+
+  images:
+    name: Service images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target actions services/soar
+      - run: docker build --target agent services/soar
+
+  shell:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -x scripts/*.sh scripts/lab/*.sh deploy/ansible/*.sh deploy/ansible/lib/*.sh
+
+  manifests:
+    name: Chart + helmfile render, schema validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install helmfile and kubeconform
+        run: |
+          curl -fsSL "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz" | sudo tar -xz -C /usr/local/bin helmfile
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | sudo tar -xz -C /usr/local/bin kubeconform
+          helmfile init --force
+      - name: Lint k8s-soar chart
+        run: helm lint charts/k8s-soar --set ai.enabled=true --set lab.enabled=true
+      - name: Render every release (default and lab environments)
+        run: |
+          for env in default lab; do
+            helmfile -f deploy/helmfile.yaml.gotmpl -e "$env" template > "/tmp/stack-$env.yaml"
+          done
+      - name: Validate against Kubernetes + CRD schemas
+        run: |
+          kubeconform -strict -summary -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /tmp/stack-default.yaml /tmp/stack-lab.yaml
+
+  falco-rules:
+    name: Falco rules validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Extract rules exactly as deployed (ConfigMap data)
+        run: |
+          mkdir -p /tmp/rules
+          helm template k8s-soar charts/k8s-soar --show-only templates/detection/falco-rules.yaml \
+            | python3 -c 'import sys,yaml,pathlib; d=yaml.safe_load(sys.stdin)["data"]; [pathlib.Path("/tmp/rules",k).write_text(v) for k,v in d.items()]'
+          ls /tmp/rules
+      - name: falco -V (stock rules first, then k8s-soar rules in load order)
+        run: |
+          args=(-V /etc/falco/falco_rules.yaml)
+          for f in $(ls /tmp/rules | sort); do args+=(-V "/rules/$f"); done
+          docker run --rm -v /tmp/rules:/rules:ro "falcosecurity/falco:${FALCO_VERSION}" falco "${args[@]}"
