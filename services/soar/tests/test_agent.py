@@ -119,3 +119,9 @@ def test_real_litellm_tool_call_imports(monkeypatch):
         mock_response="ok",
     )
     assert response.choices[0].message.content == "ok"
+
+
+def test_model_string_normalisation():
+    assert AgentSettings(provider="gemini", model="models/gemini-2.5-flash").litellm_model == "gemini/gemini-2.5-flash"
+    assert AgentSettings(provider="gemini", model=" gemini-2.5-flash ").litellm_model == "gemini/gemini-2.5-flash"
+    assert AgentSettings(provider="openrouter", model="anthropic/claude-x").litellm_model == "anthropic/claude-x"

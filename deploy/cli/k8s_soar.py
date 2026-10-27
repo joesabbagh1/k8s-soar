@@ -381,6 +381,22 @@ def _choose_many_numbered(question: str, options: list[tuple[str, str]], default
         print(f"    enter numbers from 1 to {len(options)}")
 
 
+# Model families that clearly belong to one provider (catches e.g. a Claude model on Gemini).
+MODEL_FAMILIES = {"claude": "anthropic", "gpt-": "openai", "o1": "openai", "o3": "openai", "gemini": "gemini"}
+MULTI_PROVIDER = {"openrouter", "bedrock", "azure", "ollama", "vertex_ai"}
+
+
+def model_check(provider: str, model: str) -> str:
+    if " " in model:
+        return "model IDs have no spaces (e.g. the ID from your provider's model list)"
+    if model.startswith("models/"):
+        return "drop the 'models/' prefix"
+    if provider in MULTI_PROVIDER:
+        return ""
+    owner = next((p for prefix, p in MODEL_FAMILIES.items() if model.lower().startswith(prefix)), provider)
+    return "" if owner == provider else f"{model} is a {owner} model, but the provider is {provider}"
+
+
 def url_check(value: str) -> str:
     return "" if value.startswith(("https://", "http://")) else "must start with https:// or http://"
 
@@ -655,10 +671,14 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
     step(n, total, "AI triage", "An LLM reviews each case and recommends an action. Optional.")
     ai["enabled"] = confirm("Enable AI triage?", ai.get("enabled", False))
     if ai["enabled"]:
-        ai["provider"] = choose("Provider", [(p, label) for p, label, _ in PROVIDERS], ai.get("provider", "anthropic"))
-        default_model = ai.get("model") if ai.get("provider") == ai["provider"] else ""
+        previous = ai.get("provider")
+        ai["provider"] = choose("Provider", [(p, label) for p, label, _ in PROVIDERS], previous or "anthropic")
+        # Only offer the saved model if it belongs to the provider just chosen.
+        default_model = ai.get("model", "") if previous == ai["provider"] else ""
         default_model = default_model or next(m for p, _, m in PROVIDERS if p == ai["provider"])
-        ai["model"] = ask("Model", default_model, required=True)
+        if not default_model:
+            print(dim("Use the model ID exactly as your provider lists it (no spaces, no 'models/' prefix)."))
+        ai["model"] = ask("Model", default_model, required=True, validate=lambda m: model_check(ai["provider"], m))
         if ai["provider"] in ("ollama", "azure"):
             hint = (
                 "http://ollama.<namespace>:11434"

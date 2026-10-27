@@ -47,3 +47,19 @@ def test_empty_secrets_are_not_written(cli):
     cli.write_secrets({"SLACK_WEBHOOK_URL": "", "AI_API_KEY": "k"})
     assert "SLACK_WEBHOOK_URL" not in cli.SECRETS_FILE.read_text()
     assert cli.load_secrets() == {"AI_API_KEY": "k"}
+
+
+@pytest.mark.parametrize(
+    ("provider", "model", "ok"),
+    [
+        ("gemini", "gemini-2.5-flash", True),
+        ("gemini", "claude-sonnet-5-5", False),
+        ("gemini", "models/gemini-2.5-flash", False),
+        ("anthropic", "claude-sonnet-5-5", True),
+        ("openai", "claude-sonnet-5-5", False),
+        ("openrouter", "anthropic/claude-sonnet-5-5", True),
+        ("anthropic", "Claude Sonnet", False),
+    ],
+)
+def test_model_check(cli, provider, model, ok):
+    assert (cli.model_check(provider, model) == "") is ok

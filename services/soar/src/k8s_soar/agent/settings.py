@@ -24,9 +24,13 @@ class AgentSettings(BaseModel):
 
     @property
     def litellm_model(self) -> str:
-        if "/" in self.model and self.model.split("/", 1)[0] in PROVIDERS:
-            return self.model
-        return f"{self.provider}/{self.model}"
+        model = self.model.strip()
+        # Google lists models as "models/gemini-..."; LiteLLM wants the bare ID.
+        if model.startswith("models/"):
+            model = model.removeprefix("models/")
+        if "/" in model and model.split("/", 1)[0] in PROVIDERS:
+            return model
+        return f"{self.provider}/{model}"
 
     def public(self) -> dict[str, object]:
         """Safe to expose: never includes the key."""
