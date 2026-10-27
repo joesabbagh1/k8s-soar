@@ -19,13 +19,15 @@ The **Closed** and **All** tabs show the cases that are finished.
 
 | Section | Content |
 |---------|---------|
-| Header | Rule, severity, status, and Falco's one-line description of what happened, on which pod and image |
-| What happened | Process, command line, parent, file or connection, user, workload and owner, node, MITRE techniques (linked) |
-| What k8s-soar did | Timeline: detection → routing decision → quarantine (time to contain, replacement scheduled) → evidence collected → AI verdict → notifications → waiting for decision → decision (who, note) → action result |
-| Evidence | Pod as it was at alert time (owner, node, service account, host access, container security flags), Kubernetes events, related Falco alerts, Tetragon kernel events, container logs, all Falco fields, raw alert |
-| Your decision | Shown while the case waits. Actions are described in plain words, and the AI recommendation is marked |
-| AI triage | Verdict, confidence, summary, evidence, recommended actions, reasoning, model |
-| Links | Grafana logs and dashboard (when `integrations.grafanaExternalUrl` is set), Argo case |
+| Header | Severity, rule, status, Falco's one-line description, then workload, owner, image, detection time, time to contain and ATT&CK technique |
+| Activity | The command line (copyable code block), process, parent, file or connection, user, syscall, container, node, rule and technique |
+| Response | Timeline with offsets from detection: detection → routing decision → quarantine (time to contain, replacement scheduled) → evidence collected → AI verdict → notifications → waiting for decision → decision (who, note) → action result |
+| Investigate in Grafana | Loki queries (shown as code) that open Grafana Explore on the case's time window, from 15 minutes before to 30 minutes after detection: Falco alerts on the pod, container logs, Tetragon kernel activity, and the response steps' logs. There's also a link to the Response dashboard |
+| Workload at detection time | Owner chain, service account, node/IP, host access, NetworkPolicies, container security context, Kubernetes events |
+| Commands | Ready-to-copy `kubectl` commands for the pod and the case workflow, all Falco fields, and the raw alert |
+| Decision required | Shown while the case waits. The confirm button names the action and turns red for destructive ones. Actions are described in plain words, and the AI recommendation is marked |
+| AI assessment | Verdict, confidence, summary, evidence, reasoning, model |
+| Case | Workflow ID and Grafana base URL |
 
 ## Decisions
 
@@ -67,6 +69,13 @@ workloads.
   can reach the Service.
 
 Form posts from other sites are refused, because the `Origin` header must match the host.
+
+## Grafana links
+
+Logs are not copied into the console. Each case links to Grafana with the query and time range
+already filled in. The Grafana URL comes from `k8sSoar.integrations.grafanaExternalUrl`. When
+that is empty, the console uses the host you opened it on with port 3000, which matches
+`make grafana`: that command also listens on all interfaces.
 
 ## Configuration (`k8sSoar.console`)
 

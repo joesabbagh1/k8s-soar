@@ -1,48 +1,65 @@
 {% extends "base.html" %}
-{% block head %}<meta http-equiv="refresh" content="20">{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="20">
+<style>
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.tabs { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.tabs a { padding: 6px 14px; color: var(--muted); font-weight: 500; border-left: 1px solid var(--line); }
+.tabs a:first-child { border-left: 0; }
+.tabs a:hover { text-decoration: none; color: var(--text-strong); }
+.tabs a.on { background: var(--raised); color: var(--text-strong); }
+.tabs .n { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-left: 6px; }
+.cases td { padding: 12px; }
+.cases tbody tr { position: relative; cursor: pointer; }
+.cases tbody tr:hover td { background: var(--raised); }
+.cases .title { color: var(--text-strong); font-weight: 550; }
+.cases .title:hover { text-decoration: none; }
+.cases .title::after { content: ""; position: absolute; inset: 0; }
+.cases .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+.empty { padding: 56px 20px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--text-strong); font-weight: 550; margin-bottom: 4px; }
+@media (max-width: 900px) { .cases .hide-sm { display: none; } }
+</style>{% endblock %}
 {% block content %}
-<div style="display:flex;align-items:end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+<div class="head">
   <div>
     <h1>Cases</h1>
-    <div class="muted">
-      {% if counts.awaiting %}<strong style="color:var(--warn)">{{ counts.awaiting }} waiting for a decision</strong> · {% endif %}
-      One case per alert. Refreshes every 20 seconds.
+    <div class="muted" style="margin-top:2px">
+      {% if counts.awaiting %}<span style="color:var(--high);font-weight:550">{{ counts.awaiting }} awaiting decision</span><span class="faint"> · </span>{% endif %}one case per alert<span class="faint"> · </span>auto-refresh 20s
     </div>
   </div>
-  <div style="display:flex;gap:6px">
+  <nav class="tabs">
     {% for key, label in [("open", "Open"), ("closed", "Closed"), ("all", "All")] %}
-      <a class="pill {{ 'accent' if show == key else 'info' }}" href="/?show={{ key }}">{{ label }}{% if counts.get(key) is not none %} {{ counts[key] }}{% endif %}</a>
+    <a href="/?show={{ key }}" class="{{ 'on' if show == key }}">{{ label }}<span class="n">{{ counts.get(key, 0) }}</span></a>
     {% endfor %}
-  </div>
+  </nav>
 </div>
 
-<div class="panel" style="padding:0;overflow-x:auto">
+<div class="card" style="overflow-x:auto">
 {% if cases %}
-<table>
-  <thead><tr><th>Severity</th><th>Detection</th><th>Workload</th><th>Status</th><th>AI verdict</th><th>Opened</th></tr></thead>
+<table class="cases">
+  <thead><tr>
+    <th style="width:92px">Severity</th><th>Case</th><th>Workload</th><th class="hide-sm">Pod</th>
+    <th>Status</th><th class="hide-sm">AI</th><th style="text-align:right">Opened</th>
+  </tr></thead>
   <tbody>
   {% for c in cases %}
     {% set v = c.verdict %}
     <tr>
-      <td class="sev-{{ c.severity }}"><span class="pill info"><span class="dot"></span>{{ c.severity|capitalize }}</span></td>
-      <td><a href="/cases/{{ c.name }}"><strong>{{ c.title }}</strong></a>
-        <div class="muted" style="font-size:13px">{{ c.headline }}</div></td>
-      <td class="mono">{{ c.workload }}{% if c.pod_state %}<div><span class="pill {{ 'good' if c.pod_state == 'quarantined' else 'info' }}">{{ c.pod_state }}</span></div>{% endif %}</td>
-      <td>
-        {% if c.status == "awaiting" %}<span class="pill warn">{{ c.status_label }}</span>
-        {% elif c.status == "failed" %}<span class="pill bad">{{ c.status_label }}</span>
-        {% elif c.status == "in_progress" %}<span class="pill accent">{{ c.status_label }}</span>
-        {% else %}<span class="pill info">{{ c.status_label }}</span>{% endif %}
-      </td>
-      <td>{% if v and v.verdict != "unavailable" %}{{ v.verdict.replace("_", " ")|capitalize }} <span class="muted">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="muted" title="{{ c.created }}">{{ ago(c.created) }}</td>
+      <td><span class="sev sev-{{ c.severity }}">{{ c.severity }}</span></td>
+      <td><a class="title" href="/cases/{{ c.name }}">{{ c.title }}</a><div class="sub">{{ c.headline }}</div></td>
+      <td><code>{{ c.workload }}</code></td>
+      <td class="hide-sm">{% if c.pod_state %}<span class="tag {{ 'warn' if c.pod_state == 'quarantined' else '' }}">{{ c.pod_state }}</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td><span class="status {{ c.status }}">{{ c.status_label }}</span></td>
+      <td class="hide-sm">{% if v and v.verdict != "unavailable" %}<span class="{{ 'sev-critical' if v.verdict == 'true_positive' else '' }}">{{ v.verdict.replace("_", " ") }}</span> <span class="faint mono">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td class="muted mono" style="text-align:right;white-space:nowrap" title="{{ c.created }}">{{ ago(c.created) }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
-  <div style="padding:28px;text-align:center" class="muted">
-    {% if show == "open" %}No open cases. Every alert that k8s-soar handles shows up here.{% else %}No cases.{% endif %}
+  <div class="empty">
+    {% if show == "open" %}<strong>No open cases</strong>Alerts that k8s-soar responds to appear here, newest first.
+    {% else %}<strong>No cases</strong>{% endif %}
   </div>
 {% endif %}
 </div>

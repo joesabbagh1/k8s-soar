@@ -64,9 +64,11 @@ console: ## Open the analyst console on http://<this machine>:8081
 	@echo "Console: http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):8081"
 	kubectl port-forward --address $(CONSOLE_ADDRESS) -n $(SOAR_NS) svc/soar-console 8081:8080
 
-grafana: ## Open Grafana on http://localhost:3000
-	@echo "Grafana: http://localhost:3000  user: admin  password: make grafana-password"
-	kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+GRAFANA_ADDRESS ?= 0.0.0.0
+
+grafana: ## Open Grafana on http://<this machine>:3000 (the console links here)
+	@echo "Grafana: http://$$(hostname -I 2>/dev/null | awk '{print $$1}' || echo localhost):3000  user: admin  password: make grafana-password"
+	kubectl port-forward --address $(GRAFANA_ADDRESS) -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 
 grafana-password: ## Print the Grafana admin password
 	@kubectl get secret -n monitoring grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo

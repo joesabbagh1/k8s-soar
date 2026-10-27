@@ -106,7 +106,7 @@ def test_awaiting_case_reads_like_a_case():
     assert case.recommended == "delete-pod"
     assert ("Command line", "bash -i") in case.key_fields
     titles = [e.title for e in case.timeline]
-    assert titles[0] == "Falco detected the activity"
+    assert titles[0] == "Detected by Falco"
     assert "Pod quarantined and network-isolated" in titles
     assert "AI verdict: True positive (90% confidence)" in titles
     assert titles[-1] == "Waiting for an analyst decision"
@@ -190,14 +190,18 @@ def test_list_and_case_pages_render(client):
     http, _ = client
     page = http.get("/")
     assert page.status_code == 200
-    assert "Reverse Shell" in page.text and "1 waiting for a decision" in page.text
+    assert "Reverse Shell" in page.text and "1 awaiting decision" in page.text
     assert "old-case" not in page.text  # closed cases are not "open"
     assert "old-case" in http.get("/?show=closed").text
 
     case = http.get("/cases/k8ssoar-reverse-shell-abcde")
     assert case.status_code == 200
-    assert "Your decision" in case.text and "AI recommends" in case.text
+    assert "Decision required" in case.text and "AI PICK" in case.text
     assert "Pod quarantined and network-isolated" in case.text
+    # Logs are linked to Grafana for the case's time window, not dumped into the page.
+    assert "http://testserver:3000/explore?" in case.text
+    assert "GET / 200" not in case.text
+    assert "kubectl describe -n shop pod/web-5d9c-abcde" in case.text
 
 
 def test_decision_resumes_the_gate(client):
@@ -269,3 +273,29 @@ def test_argo_client_set_then_resume():
     ]
     assert calls[0][2]["outputParameters"] == '{"action": "delete-pod"}'
     assert calls[0][2]["nodeFieldSelector"] == "displayName=approve"
+
+
+# --- Grafana links -------------------------------------------------------------
+
+
+def test_grafana_explore_link_is_scoped_to_the_alert():
+    from datetime import UTC, datetime
+    from urllib.parse import parse_qs, urlparse
+
+    from k8s_soar import grafana
+
+    at = datetime(2026, 10, 26, 10, 0, tzinfo=UTC)
+    links = grafana.case_log_links("http://grafana:3000", at, "shop", "web-1", "case-1")
+    assert [link.title for link in links] == [
+        "Falco alerts on this pod",
+        "Container logs",
+        "Kernel activity (Tetragon)",
+        "Response steps",
+    ]
+    assert links[1].expr == '{namespace="shop", pod="web-1"}'
+    panes = json.loads(parse_qs(urlparse(links[1].url).query)["panes"][0])
+    pane = panes["k8s-soar"]
+    assert pane["queries"][0]["expr"] == links[1].expr
+    assert pane["queries"][0]["datasource"] == {"type": "loki", "uid": "loki"}
+    start, end = int(pane["range"]["from"]), int(pane["range"]["to"])
+    assert end - start == 45 * 60 * 1000 and start == int(at.timestamp() * 1000) - 15 * 60 * 1000

@@ -1,0 +1,6 @@
+{% macro codeblock(id, label, text) -%}
+<div class="code">
+  <div class="code-head"><span>{{ label }}</span><button type="button" class="copy" data-copy="{{ id }}">Copy</button></div>
+  <pre id="{{ id }}">{{ text }}</pre>
+</div>
+{%- endmacro %}

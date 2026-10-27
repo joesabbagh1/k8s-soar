@@ -38,7 +38,8 @@ make status               # health check
 make cases                # recent cases
 make quarantined          # quarantined pods
 make console             # analyst console: review and decide cases (port 8081)
-make argo-ui / grafana    # Argo (raw workflow view) and Grafana; both listen on all interfaces
+make grafana             # Grafana on port 3000; the console's log links open here
+make argo-ui              # Argo (raw workflow view); all three listen on all interfaces
 ```
 
 **Upgrading a component:** bump its `version:` in `deploy/helmfile.yaml.gotmpl`, read the

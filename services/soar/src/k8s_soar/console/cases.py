@@ -88,6 +88,22 @@ def _time(value: str | None) -> datetime | None:
         return None
 
 
+def offset(when: datetime | None, start: datetime | None) -> str:
+    """Timeline offset from detection: +0.8s, +12s, +3m 05s, +2h 10m."""
+    if when is None or start is None:
+        return ""
+    seconds = (when - start).total_seconds()
+    if seconds < 0:
+        return "+0s"
+    if seconds < 10:
+        return f"+{seconds:.1f}s"
+    if seconds < 60:
+        return f"+{int(seconds)}s"
+    if seconds < 3600:
+        return f"+{int(seconds // 60)}m {int(seconds % 60):02d}s"
+    return f"+{int(seconds // 3600)}h {int(seconds % 3600 // 60):02d}m"
+
+
 def ago(when: datetime | None, now: datetime | None = None) -> str:
     if when is None:
         return "—"
@@ -158,6 +174,31 @@ class Case:
     def contained(self) -> bool:
         c = self.containment
         return bool(c) and "latency_seconds" in c and not c.get("dry_run")
+
+    @property
+    def time_to_contain(self) -> float | None:
+        return self.containment.get("latency_seconds") if self.contained else None
+
+    @property
+    def commands(self) -> list[str]:
+        """kubectl commands to look at this case by hand."""
+        out = []
+        if self.alert and self.alert.pod and self.alert.namespace:
+            target = f"-n {self.alert.namespace} pod/{self.alert.pod}"
+            container = f" -c {self.alert.container}" if self.alert.container else ""
+            out += [
+                f"kubectl describe {target}",
+                f"kubectl logs {target}{container} --timestamps --tail=200",
+                f"kubectl get {target} -o yaml",
+            ]
+        out.append(f"kubectl get workflow -n k8s-soar {self.name} -o yaml")
+        return out
+
+    @property
+    def all_fields_text(self) -> str:
+        if not self.alert:
+            return ""
+        return "\n".join(f"{k} = {v}" for k, v in sorted(self.alert.fields.items()) if v not in (None, ""))
 
     @property
     def pod_state(self) -> str:
@@ -322,7 +363,7 @@ class Case:
         events: list[Event] = []
         alert = self.alert
         if alert:
-            events.append(Event(alert.time, "Falco detected the activity", self.headline, "bad"))
+            events.append(Event(alert.time, "Detected by Falco", alert.rule, "bad"))
 
         guard = self.steps.get("guard")
         if guard and guard.phase == "Succeeded":

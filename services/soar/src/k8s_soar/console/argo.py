@@ -26,6 +26,9 @@ class ConsoleSettings:
     # Header set by an authenticating proxy (oauth2-proxy: X-Auth-Request-Email).
     # Empty: the analyst types a name, kept in a cookie.
     user_header: str = ""
+    # Browser URL of Grafana. Empty: same host the console is opened on, port
+    # 3000 (where `make grafana` listens).
+    grafana_url: str = ""
     verify_tls: bool = True
     case_limit: int = 200
     timeout: float = 10.0
@@ -38,6 +41,7 @@ def console_settings() -> ConsoleSettings:
         argo_server_url=env("CONSOLE_ARGO_SERVER_URL", ConsoleSettings.argo_server_url).rstrip("/"),
         namespace=env("CONSOLE_NAMESPACE") or env("POD_NAMESPACE") or "k8s-soar",
         user_header=env("CONSOLE_USER_HEADER", "").strip(),
+        grafana_url=(env("CONSOLE_GRAFANA_URL") or env("SOAR_GRAFANA_EXTERNAL_URL") or "").rstrip("/"),
         verify_tls=env("CONSOLE_ARGO_VERIFY_TLS", "true").lower() == "true",
         case_limit=int(env("CONSOLE_CASE_LIMIT", "200") or 200),
     )

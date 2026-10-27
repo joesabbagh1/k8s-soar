@@ -21,7 +21,7 @@ from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from k8s_soar.actions.notify import links
+from k8s_soar import grafana
 from k8s_soar.config import settings
 
 from . import cases
@@ -30,9 +30,10 @@ from .argo import ArgoClient, ArgoError, console_settings
 log = logging.getLogger("k8s_soar.console")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar console", version="0.3.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="k8s-soar console", version="0.3.1", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
+templates.env.globals["offset"] = cases.offset
 
 ANALYST_COOKIE = "soar_analyst"
 _CASE_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{0,252}$")
@@ -86,6 +87,14 @@ def _page(request: Request, template: str, **context) -> HTMLResponse:
     )
 
 
+def _grafana_base(request: Request) -> str:
+    configured = console_settings().grafana_url
+    if configured:
+        return configured
+    host = (request.url.hostname or "localhost").strip("[]")
+    return f"{request.url.scheme}://{host}:3000"
+
+
 def _load_cases() -> list[cases.Case]:
     return sorted((cases.from_workflow(wf) for wf in argo().list_workflows()), key=cases.sort_key)
 
@@ -117,9 +126,23 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
         if "404" in str(exc):
             raise HTTPException(404, "no such case") from exc
         return _page(request, "cases.html", cases=[], show="open", counts={}, error=str(exc))
-    case_links = links(case.alert, settings(), case.name) if case.alert else {}
+    base = _grafana_base(request)
+    at = case.alert.time if case.alert else case.created
+    log_links = (
+        grafana.case_log_links(base, at, case.alert.namespace, case.alert.pod, case.name) if case.alert and at else []
+    )
+    dashboard = grafana.dashboard_url(base, "k8s-soar-response", at) if at else ""
     raw_alert = json.dumps(case.alert.model_dump(mode="json"), indent=2) if case.alert else ""
-    return _page(request, "case.html", case=case, links=case_links, raw_alert=raw_alert, decided=decided)
+    return _page(
+        request,
+        "case.html",
+        case=case,
+        log_links=log_links,
+        dashboard=dashboard,
+        grafana_base=base,
+        raw_alert=raw_alert,
+        decided=decided,
+    )
 
 
 @app.post("/cases/{name}/decide")

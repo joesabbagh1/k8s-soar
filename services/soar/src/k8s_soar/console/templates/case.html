@@ -1,209 +1,285 @@
 {% extends "base.html" %}
+{% from "_macros.html" import codeblock %}
 {% block title %}{{ case.title }}{% endblock %}
 {% block head %}{% if case.status == "in_progress" %}<meta http-equiv="refresh" content="5">{% endif %}
 <style>
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
-.side { position: sticky; top: 16px; }
-@media (max-width: 960px) { .layout { grid-template-columns: 1fr; } .side { position: static; } }
-.timeline { list-style: none; margin: 0; padding: 0; }
-.timeline li { position: relative; padding: 0 0 14px 22px; }
-.timeline li::before { content: ""; position: absolute; left: 5px; top: 18px; bottom: 0; width: 2px; background: var(--line); }
-.timeline li:last-child::before { display: none; }
-.timeline .mark { position: absolute; left: 0; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--info); }
-.timeline .bad .mark { background: var(--bad); } .timeline .good .mark { background: var(--good); }
-.timeline .warn .mark { background: var(--warn); }
-.timeline .when { color: var(--muted); font-size: 12px; }
-.choice { display: block; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
-.choice + .choice { margin-top: 8px; }
-.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.choice input { margin-right: 6px; }
-.choice .desc { color: var(--muted); font-size: 13px; margin: 2px 0 0 22px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.crumb { font-size: 12.5px; color: var(--faint); margin-bottom: 10px; }
+.crumb a { color: var(--muted); }
+.hero { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; margin-bottom: 18px; }
+.hero-top { padding: 16px 20px 14px; display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.hero-top .what { font-size: 15px; color: var(--text); margin-top: 3px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-top: 1px solid var(--line); }
+.facts > div { padding: 11px 20px; border-right: 1px solid var(--line); min-width: 0; }
+.facts > div:last-child { border-right: 0; }
+.facts .v { margin-top: 3px; color: var(--text-strong); overflow-wrap: anywhere; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; align-items: start; }
+.side { position: sticky; top: 66px; display: grid; gap: 18px; }
+.main { display: grid; gap: 18px; }
+@media (max-width: 1040px) { .layout { grid-template-columns: 1fr; } .side { position: static; } }
+
+.tl { display: grid; grid-template-columns: 74px 14px minmax(0, 1fr); column-gap: 10px; }
+.tl .t { font-family: var(--mono); font-size: 11.5px; color: var(--faint); text-align: right; padding-top: 2px; white-space: nowrap; }
+.tl .rail { position: relative; }
+.tl .rail::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+.tl .rail.first::before { top: 8px; } .tl .rail.last::before { bottom: calc(100% - 8px); }
+.tl .rail i { position: absolute; left: 2px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface);
+  border: 2px solid var(--low); }
+.tl .bad i { border-color: var(--crit); } .tl .good i { border-color: var(--ok); } .tl .warn i { border-color: var(--high); background: var(--high); }
+.tl .body { padding-bottom: 14px; }
+.tl .body b { font-weight: 550; color: var(--text-strong); }
+.tl .body div { color: var(--muted); }
+
+.links a.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 12px 18px; color: inherit;
+  border-top: 1px solid var(--line); }
+.links a.row:first-of-type { border-top: 0; }
+.links a.row:hover { background: var(--raised); text-decoration: none; }
+.links .ttl { color: var(--text-strong); font-weight: 550; }
+.links .go { grid-row: span 3; align-self: center; color: var(--accent); font-weight: 500; white-space: nowrap; }
+.links code { display: block; width: fit-content; max-width: 100%; margin-top: 4px; }
+
+.opt { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 2px 8px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer; }
+.opt + .opt { margin-top: 6px; }
+.opt:hover { border-color: var(--line-strong); }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-bg); }
+.opt input { margin: 3px 0 0; accent-color: var(--accent); }
+.opt b { font-weight: 550; color: var(--text-strong); }
+.opt .ai { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: .03em; margin-left: 6px; }
+.opt p { grid-column: 2; margin: 0; color: var(--muted); font-size: 12.5px; }
+.meter { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin: 8px 0 12px; }
+.meter i { display: block; height: 100%; background: var(--crit); }
+.meter.benign i { background: var(--ok); } .meter.needs_review i { background: var(--high); }
+ul.ev { margin: 6px 0 0; padding-left: 16px; } ul.ev li { margin: 3px 0; }
+.flags { display: flex; gap: 4px; flex-wrap: wrap; }
 </style>{% endblock %}
 {% block content %}
 {% set a = case.alert %}
 {% set v = case.verdict %}
-{% if decided %}<div class="banner good">Decision recorded: {{ decided }}. The case continues in the background — this page shows the result.</div>{% endif %}
+{% set ev = case.evidence %}
+{% set pod = ev.get("pod") or {} %}
+{% if decided %}<div class="flash">Decision recorded: <code>{{ decided }}</code>. The response continues in the background; this page shows the result.</div>{% endif %}
 
-<div style="margin-bottom:16px">
-  <div class="muted" style="font-size:13px"><a href="/">Cases</a> / <span class="mono">{{ case.name }}</span></div>
-  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px">
-    <h1>{{ case.title }}</h1>
-    <span class="pill {{ 'bad' if case.severity in ('critical','alert','emergency') else 'warn' }}">{{ case.severity|capitalize }}</span>
-    {% if case.status == "awaiting" %}<span class="pill warn">{{ case.status_label }}</span>
-    {% elif case.status == "failed" %}<span class="pill bad">{{ case.status_label }}</span>
-    {% elif case.status == "in_progress" %}<span class="pill accent">{{ case.status_label }}</span>
-    {% else %}<span class="pill info">{{ case.status_label }}</span>{% endif %}
+<div class="crumb"><a href="/">Cases</a> / <span class="mono">{{ case.name }}</span></div>
+
+<div class="hero">
+  <div class="hero-top">
+    <div style="min-width:0">
+      <div style="display:flex;gap:12px;align-items:baseline;flex-wrap:wrap">
+        <span class="sev sev-{{ case.severity }}">{{ case.severity }}</span>
+        <h1>{{ case.title }}</h1>
+      </div>
+      {% if case.headline %}<div class="what">{{ case.headline }}</div>{% endif %}
+    </div>
+    <span class="status {{ case.status }}" style="margin-top:4px">{{ case.status_label }}</span>
   </div>
-  {% if case.headline %}<div style="font-size:16px;margin-top:2px">{{ case.headline }}</div>{% endif %}
-  <div class="muted">on <span class="mono">{{ case.workload }}</span>{% if a and a.image %} · image <span class="mono">{{ a.image }}</span>{% endif %} · {{ ago(a.time if a else case.created) }}</div>
+  <div class="facts">
+    <div><div class="label">Workload</div><div class="v"><code>{{ case.workload }}</code></div></div>
+    {% if case.owner %}<div><div class="label">Owner</div><div class="v mono">{{ case.owner }}</div></div>{% endif %}
+    {% if a and a.image %}<div><div class="label">Image</div><div class="v mono">{{ a.image }}</div></div>{% endif %}
+    {% if a %}<div><div class="label">Detected</div><div class="v">{{ a.time.strftime("%H:%M:%S") }} <span class="muted">· {{ ago(a.time) }}</span></div></div>{% endif %}
+    {% if case.time_to_contain is not none %}<div><div class="label">Time to contain</div><div class="v">{{ case.time_to_contain }}s</div></div>{% endif %}
+    {% if a and a.mitre %}<div><div class="label">ATT&amp;CK</div><div class="v">{% for t in a.mitre %}<a href="{{ t.url }}" target="_blank" rel="noopener" title="{{ t.name }} — {{ t.tactic }}" class="mono">{{ t.id }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</div></div>{% endif %}
+  </div>
 </div>
 
 <div class="layout">
-<div class="stack">
+<div class="main">
 
-  <section class="panel">
-    <h2>What happened</h2>
-    <dl class="kv">
-      {% for label, value in case.key_fields %}<dt>{{ label }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
-      {% if a %}
-      <dt>Workload</dt><dd class="mono">{{ case.workload }}{% if case.owner %} <span class="muted">({{ case.owner }})</span>{% endif %}</dd>
-      {% if a.hostname %}<dt>Node</dt><dd class="mono">{{ a.hostname }}</dd>{% endif %}
-      <dt>Detected at</dt><dd>{{ a.time.strftime("%Y-%m-%d %H:%M:%S UTC") }}</dd>
-      <dt>Detection rule</dt><dd>{{ a.rule }} <span class="muted">({{ a.source }})</span></dd>
-      {% endif %}
-    </dl>
-    {% if a and a.mitre %}
-    <div style="margin-top:12px" class="chips">
-      {% for t in a.mitre %}<a class="pill accent" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.id }} · {{ t.name }} <span style="font-weight:400">({{ t.tactic }})</span></a>{% endfor %}
+  <div class="card">
+    <section>
+      <h2>Activity</h2>
+      {% if a and a.fields.get("proc.cmdline") %}{{ codeblock("cmd", "Command line", a.fields["proc.cmdline"]) }}{% endif %}
+      <dl class="kv" style="margin-top:14px">
+        {% for label, value in case.key_fields if label != "Command line" %}
+        <dt>{{ label }}</dt><dd><code>{{ value }}</code></dd>
+        {% endfor %}
+        {% if a %}
+        {% if a.hostname %}<dt>Node</dt><dd><code>{{ a.hostname }}</code></dd>{% endif %}
+        <dt>Rule</dt><dd>{{ a.rule }} <span class="faint">· {{ a.source }}</span></dd>
+        {% for t in a.mitre %}<dt>{% if loop.first %}Technique{% endif %}</dt><dd><a href="{{ t.url }}" target="_blank" rel="noopener"><span class="mono">{{ t.id }}</span> {{ t.name }}</a> <span class="faint">· {{ t.tactic }}</span></dd>{% endfor %}
+        {% endif %}
+      </dl>
+    </section>
+  </div>
+
+  <div class="card">
+    <section>
+      <h2>Response</h2>
+      {% set tl = case.timeline %}
+      <div class="tl">
+        {% for e in tl %}
+        <div class="t" title="{{ e.when }}">{% if loop.first or not a %}{{ e.when.strftime("%H:%M:%S") if e.when else "" }}{% else %}{{ offset(e.when, a.time) }}{% endif %}</div>
+        <div class="rail {{ e.tone }} {{ 'first' if loop.first }} {{ 'last' if loop.last and case.status != 'in_progress' }}"><i></i></div>
+        <div class="body"><b>{{ e.title }}</b>{% if e.detail %}<div>{{ e.detail }}</div>{% endif %}</div>
+        {% endfor %}
+        {% if case.status == "in_progress" %}<div class="t"></div><div class="rail last"><i></i></div><div class="body"><div>Running… this page refreshes.</div></div>{% endif %}
+      </div>
+    </section>
+  </div>
+
+  {% if log_links %}
+  <div class="card links">
+    <section style="padding-bottom:0"><h2>Investigate in Grafana</h2>
+      <div class="muted" style="margin:-6px 0 10px">Loki queries for this case, opened from 15 minutes before to 30 minutes after the detection.</div></section>
+    <div>
+      {% for l in log_links %}
+      <a class="row" href="{{ l.url }}" target="_blank" rel="noopener">
+        <span class="ttl">{{ l.title }}{% if l.title.startswith("Falco") and ev.get("falco_history") %} <span class="faint">· {{ ev.falco_history|length }} in the last hour</span>{% elif l.title.startswith("Kernel") and ev.get("tetragon_events") %} <span class="faint">· {{ ev.tetragon_events|length }} events</span>{% endif %}</span>
+        <span class="go">Open ↗</span>
+        <span class="muted">{{ l.description }}</span>
+        <code>{{ l.expr }}</code>
+      </a>
+      {% endfor %}
+      <a class="row" href="{{ dashboard }}" target="_blank" rel="noopener"><span class="ttl">Response dashboard</span><span class="go">Open ↗</span><span class="muted">Cases, containment latency and AI verdicts around this time.</span></a>
     </div>
-    {% endif %}
-  </section>
-
-  <section class="panel">
-    <h2>What k8s-soar did</h2>
-    <ul class="timeline">
-      {% for e in case.timeline %}
-      <li class="{{ e.tone }}"><span class="mark"></span>
-        <div><strong>{{ e.title }}</strong> <span class="when">{% if e.when %}{{ e.when.strftime("%H:%M:%S") }}{% endif %}</span></div>
-        {% if e.detail %}<div class="muted">{{ e.detail }}</div>{% endif %}
-      </li>
-      {% endfor %}
-      {% if case.status == "in_progress" %}<li class="info"><span class="mark"></span><div class="muted">Working… this page refreshes.</div></li>{% endif %}
-    </ul>
-  </section>
-
-  {% set ev = case.evidence %}
-  {% set pod = ev.get("pod") or {} %}
-  <section class="panel">
-    <h2>Evidence</h2>
-    {% if not ev %}<div class="muted">Not collected yet.</div>{% endif %}
-    {% if ev.get("error") %}<div class="banner bad">Evidence collection failed: {{ ev.error }}</div>{% endif %}
-
-    {% if pod.get("found") %}
-    <h3 style="font-size:13px;margin:0 0 8px">Pod at the time of the alert</h3>
-    <dl class="kv">
-      {% if pod.phase %}<dt>Phase</dt><dd>{{ pod.phase }}{% if pod.started %} · started {{ pod.started }}{% endif %}</dd>{% endif %}
-      <dt>Owner</dt><dd class="mono">{{ pod.owners|join(" → ") or "none" }}</dd>
-      {% if pod.node %}<dt>Node / IP</dt><dd class="mono">{{ pod.node }}{% if pod.pod_ip %} · {{ pod.pod_ip }}{% endif %}</dd>{% endif %}
-      {% if pod.service_account %}<dt>Service account</dt><dd class="mono">{{ pod.service_account }}{% if pod.automount_sa_token == false %} (token not mounted){% endif %}</dd>{% endif %}
-      {% set host = [] %}
-      {% if pod.host_network %}{% set _ = host.append("hostNetwork") %}{% endif %}
-      {% if pod.host_pid %}{% set _ = host.append("hostPID") %}{% endif %}
-      {% if pod.host_ipc %}{% set _ = host.append("hostIPC") %}{% endif %}
-      {% for p in pod.host_paths or [] %}{% set _ = host.append("hostPath " ~ p) %}{% endfor %}
-      <dt>Host access</dt><dd>{% if host %}<span class="pill bad">{{ host|join(", ") }}</span>{% else %}none{% endif %}</dd>
-    </dl>
-    {% if pod.containers %}
-    <div style="overflow-x:auto;margin-top:10px">
-    <table>
-      <thead><tr><th>Container</th><th>Image</th><th>Security</th></tr></thead>
-      <tbody>{% for c in pod.containers %}
-        <tr><td class="mono">{{ c.name }}</td><td class="mono">{{ c.image }}</td>
-        <td>{% if c.privileged %}<span class="pill bad">privileged</span> {% endif %}
-            {% if c.capabilities_add %}<span class="pill warn">+{{ c.capabilities_add|join(", +") }}</span> {% endif %}
-            {% if c.allow_privilege_escalation != false %}<span class="pill info">privilege escalation allowed</span> {% endif %}
-            {% if c.run_as_user == 0 or c.run_as_user is none %}<span class="pill info">may run as root</span> {% endif %}
-            {% if c.read_only_root_fs %}<span class="pill good">read-only root</span>{% endif %}</td></tr>
-      {% endfor %}</tbody>
-    </table></div>
-    {% endif %}
-    {% elif ev %}<div class="muted">The pod no longer existed when evidence was collected.</div>{% endif %}
-
-    {% if ev.get("events") %}
-    <h3 style="font-size:13px;margin:16px 0 8px">Kubernetes events</h3>
-    <div style="overflow-x:auto"><table>
-      <thead><tr><th>Type</th><th>Reason</th><th>Message</th></tr></thead>
-      <tbody>{% for e in ev.events %}<tr><td>{{ e.type }}</td><td>{{ e.reason }}{% if e.count and e.count > 1 %} ×{{ e.count }}{% endif %}</td><td>{{ e.message }}</td></tr>{% endfor %}</tbody>
-    </table></div>
-    {% endif %}
-
-    {% if ev.get("falco_history") %}
-    <details style="margin-top:14px"><summary>Related Falco alerts on this pod ({{ ev.falco_history|length }})</summary>
-      <pre style="margin-top:8px">{{ ev.falco_history|join("\n") }}</pre></details>
-    {% endif %}
-    {% if ev.get("tetragon_events") %}
-    <details style="margin-top:10px"><summary>Kernel activity from Tetragon ({{ ev.tetragon_events|length }})</summary>
-      <pre style="margin-top:8px">{{ ev.tetragon_events|join("\n") }}</pre></details>
-    {% endif %}
-    {% if ev.get("logs") %}
-    <details style="margin-top:10px"><summary>Container logs (last lines)</summary>
-      <pre style="margin-top:8px">{{ ev.logs }}</pre></details>
-    {% endif %}
-    {% if ev.get("network_policies") is not none and pod.get("found") %}
-    <div class="muted" style="margin-top:10px">NetworkPolicies in the namespace: {{ ev.network_policies|join(", ") or "none" }}</div>
-    {% endif %}
-    {% if case.other_fields %}
-    <details style="margin-top:10px"><summary>All Falco fields</summary>
-      <dl class="kv" style="margin-top:8px">{% for k, val in case.other_fields %}<dt class="mono">{{ k }}</dt><dd class="mono">{{ val }}</dd>{% endfor %}</dl></details>
-    {% endif %}
-    {% if raw_alert %}
-    <details style="margin-top:10px"><summary>Raw alert</summary><pre style="margin-top:8px">{{ raw_alert }}</pre></details>
-    {% endif %}
-  </section>
-</div>
-
-<aside class="side stack">
-  {% if case.awaiting %}
-  <section class="panel" style="border-color:var(--warn)">
-    <h2>Your decision</h2>
-    <p class="muted" style="margin-top:-6px">
-      {% if case.contained %}The pod is already quarantined: it can't reach the network, and a clean replacement is running.
-      Decide what happens next.{% else %}This alert was not contained automatically. Decide whether to act on the pod.{% endif %}
-    </p>
-    <form method="post" action="/cases/{{ case.name }}/decide">
-      {% for ch in case.choices %}
-      <label class="choice"><input type="radio" name="action" value="{{ ch.action }}" required
-        {% if (case.recommended and ch.recommended) or (not case.recommended and ch.action == "none") %}checked{% endif %}>
-        <strong>{{ ch.label }}</strong>{% if ch.recommended %} <span class="pill accent">AI recommends</span>{% endif %}
-        <div class="desc">{{ ch.description }}</div></label>
-      {% endfor %}
-      <div style="margin-top:12px"><label class="muted" for="comment">Note (optional)</label>
-        <textarea id="comment" name="comment" rows="2" maxlength="500" placeholder="Why this decision?"></textarea></div>
-      {% if not proxy_user %}
-      <div style="margin-top:8px"><label class="muted" for="analyst">Your name</label>
-        <input id="analyst" type="text" name="analyst" value="{{ analyst }}" required maxlength="100"></div>
-      {% endif %}
-      <button type="submit" style="margin-top:12px;width:100%" data-workload="{{ case.workload }}"
-        onclick="var c=this.form.querySelector('input[name=action]:checked');return !c||c.value==='none'||confirm('Run “'+c.parentNode.querySelector('strong').textContent+'” on '+this.dataset.workload+'?')">Submit decision</button>
-    </form>
-  </section>
-  {% elif case.chosen_action %}
-  <section class="panel">
-    <h2>Decision</h2>
-    <div><strong>{{ case.status_label }}</strong></div>
-    {% set approve = case.steps.get("approve") %}
-    {% if approve and approve.message %}<div class="muted">{{ approve.message }}</div>{% endif %}
-    {% if case.action_result %}<div style="margin-top:6px">{{ case.action_result.get("result", "") }}</div>{% endif %}
-  </section>
+  </div>
   {% endif %}
 
-  <section class="panel">
-    <h2>AI triage</h2>
-    {% if not v %}<div class="muted">Not run yet.</div>
-    {% elif v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
-    {% else %}
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span class="pill {{ 'bad' if v.verdict == 'true_positive' else ('good' if v.verdict == 'benign' else 'warn') }}">{{ v.verdict.replace("_", " ")|capitalize }}</span>
-        <span class="muted">{{ (v.confidence * 100)|round|int }}% confidence · severity {{ v.severity }}</span>
-      </div>
-      <p>{{ v.summary }}</p>
-      {% if v.evidence %}<div class="muted" style="font-size:12px;font-weight:600">EVIDENCE</div>
-      <ul style="margin:4px 0 8px;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
-      {% if v.recommended_actions %}<div class="muted" style="font-size:12px;font-weight:600">RECOMMENDS</div>
-      <div class="chips" style="margin:4px 0 8px">{% for r in v.recommended_actions %}<span class="pill accent">{{ r }}</span>{% endfor %}</div>{% endif %}
-      {% if v.rationale %}<details><summary>Reasoning</summary><p>{{ v.rationale }}</p></details>{% endif %}
-      {% if v.model %}<div class="muted" style="font-size:12px">{{ v.model }} · advisory only</div>{% endif %}
+  <div class="card">
+    <section>
+      <h2>Workload at detection time</h2>
+      {% if ev.get("error") %}<div class="flash err">Evidence collection failed: {{ ev.error }}</div>{% endif %}
+      {% if pod.get("found") %}
+      <dl class="kv">
+        <dt>Owner chain</dt><dd><code>{{ pod.owners|join(" → ") or "none" }}</code></dd>
+        {% if pod.service_account %}<dt>Service account</dt><dd><code>{{ pod.service_account }}</code>{% if pod.automount_sa_token == false %} <span class="muted">token not mounted</span>{% endif %}</dd>{% endif %}
+        {% if pod.node %}<dt>Node / pod IP</dt><dd><code>{{ pod.node }}</code>{% if pod.pod_ip %} <code>{{ pod.pod_ip }}</code>{% endif %}</dd>{% endif %}
+        {% set host = [] %}
+        {% if pod.host_network %}{% set _ = host.append("hostNetwork") %}{% endif %}
+        {% if pod.host_pid %}{% set _ = host.append("hostPID") %}{% endif %}
+        {% if pod.host_ipc %}{% set _ = host.append("hostIPC") %}{% endif %}
+        {% for p in pod.host_paths or [] %}{% set _ = host.append("hostPath:" ~ p) %}{% endfor %}
+        <dt>Host access</dt><dd>{% if host %}<span class="flags">{% for h in host %}<span class="tag crit">{{ h }}</span>{% endfor %}</span>{% else %}<span class="muted">none</span>{% endif %}</dd>
+        {% if ev.get("network_policies") is not none %}<dt>NetworkPolicies</dt><dd>{% if ev.network_policies %}{% for n in ev.network_policies %}<code>{{ n }}</code> {% endfor %}{% else %}<span class="muted">none in namespace</span>{% endif %}</dd>{% endif %}
+      </dl>
+      {% elif ev %}<div class="muted">The pod was already gone when evidence was collected.</div>
+      {% else %}<div class="muted">Not collected yet.</div>{% endif %}
+    </section>
+    {% if pod.get("containers") %}
+    <section style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr><th style="padding-left:18px">Container</th><th>Image</th><th>Security context</th></tr></thead>
+        <tbody>{% for c in pod.containers %}
+          <tr><td style="padding-left:18px" class="mono">{{ c.name }}</td><td class="mono">{{ c.image }}</td>
+          <td><span class="flags">
+            {% if c.privileged %}<span class="tag crit">privileged</span>{% endif %}
+            {% for cap in c.capabilities_add or [] %}<span class="tag crit">+{{ cap }}</span>{% endfor %}
+            {% if c.run_as_user == 0 or c.run_as_user is none %}<span class="tag warn">root possible</span>{% endif %}
+            {% if c.allow_privilege_escalation != false %}<span class="tag warn">priv-esc allowed</span>{% endif %}
+            {% if c.read_only_root_fs %}<span class="tag ok">read-only root</span>{% else %}<span class="tag">writable root</span>{% endif %}
+          </span></td></tr>
+        {% endfor %}</tbody>
+      </table>
+    </section>
     {% endif %}
-  </section>
+    {% if ev.get("events") %}
+    <section style="padding:0;overflow-x:auto">
+      <table>
+        <thead><tr><th style="padding-left:18px">Event</th><th>Message</th></tr></thead>
+        <tbody>{% for e in ev.events %}<tr><td style="padding-left:18px;white-space:nowrap"><span class="{{ 'sev-warning' if e.type == 'Warning' else 'muted' }}">{{ e.reason }}</span>{% if e.count and e.count > 1 %} <span class="faint mono">×{{ e.count }}</span>{% endif %}</td><td class="muted">{{ e.message }}</td></tr>{% endfor %}</tbody>
+      </table>
+    </section>
+    {% endif %}
+  </div>
 
-  <section class="panel">
-    <h2>Links</h2>
-    <ul style="margin:0;padding-left:18px">
-      {% for label, url in links.items() %}<li><a href="{{ url }}" target="_blank" rel="noopener">{{ label }}</a></li>{% endfor %}
-      <li class="muted">Workflow: <span class="mono">{{ case.name }}</span> (Argo, namespace k8s-soar)</li>
-    </ul>
-  </section>
+  <div class="card">
+    <section>
+      <h2>Commands</h2>
+      {{ codeblock("kubectl", "kubectl", case.commands|join("\n")) }}
+      {% if case.other_fields %}
+      <details style="margin-top:14px"><summary>All Falco fields ({{ case.other_fields|length + case.key_fields|length }})</summary>
+        <div style="margin-top:10px">{{ codeblock("fields", "output_fields", case.all_fields_text) }}</div></details>
+      {% endif %}
+      {% if raw_alert %}
+      <details style="margin-top:10px"><summary>Raw alert</summary>
+        <div style="margin-top:10px">{{ codeblock("raw", "alert.json", raw_alert) }}</div></details>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<aside class="side">
+  {% if case.awaiting %}
+  <div class="card" style="border-color:var(--high)">
+    <section>
+      <h2 style="color:var(--high)">Decision required</h2>
+      <p style="margin:-4px 0 14px" class="muted">
+        {% if case.contained %}The pod is isolated from the network{% if case.containment.get("orphaned") %} and a clean replacement is running{% endif %}. Choose what happens next.
+        {% else %}Nothing was changed automatically. Choose whether to act on the pod.{% endif %}
+      </p>
+      <form method="post" action="/cases/{{ case.name }}/decide" id="decide" data-workload="{{ case.workload }}">
+        {% for ch in case.choices %}
+        <label class="opt"><input type="radio" name="action" value="{{ ch.action }}" required data-label="{{ ch.label }}" data-danger="{{ 'true' if ch.action in ('delete-pod', 'scale-to-zero') else '' }}"
+          {% if (case.recommended and ch.recommended) or (not case.recommended and ch.action == "none") %}checked{% endif %}>
+          <span><b>{{ ch.label }}</b>{% if ch.recommended %}<span class="ai">AI PICK</span>{% endif %}</span>
+          <p>{{ ch.description }}</p></label>
+        {% endfor %}
+        <div style="margin-top:14px"><div class="label" style="margin-bottom:4px">Note</div>
+          <textarea name="comment" rows="2" maxlength="500" placeholder="Optional — why this decision"></textarea></div>
+        {% if not proxy_user %}
+        <div style="margin-top:10px"><div class="label" style="margin-bottom:4px">Analyst</div>
+          <input type="text" name="analyst" value="{{ analyst }}" required maxlength="100" placeholder="Your name"></div>
+        {% endif %}
+        <button type="submit" class="primary" style="margin-top:14px">Confirm</button>
+      </form>
+      <script>
+      (function () {
+        var form = document.getElementById("decide"), btn = form.querySelector("button");
+        function sync() {
+          var c = form.querySelector("input[name=action]:checked");
+          btn.textContent = c ? c.dataset.label : "Confirm";
+          btn.classList.toggle("danger", !!(c && c.dataset.danger));
+        }
+        form.addEventListener("change", sync); sync();
+        form.addEventListener("submit", function (e) {
+          var c = form.querySelector("input[name=action]:checked");
+          if (c && c.dataset.danger && !confirm(c.dataset.label + " on " + form.dataset.workload + "?")) e.preventDefault();
+        });
+      })();
+      </script>
+    </section>
+  </div>
+  {% elif case.chosen_action %}
+  <div class="card">
+    <section>
+      <h2>Decision</h2>
+      <div style="color:var(--text-strong);font-weight:550">{{ case.status_label }}</div>
+      {% set approve = case.steps.get("approve") %}
+      {% if approve and approve.message %}<div class="muted" style="margin-top:2px">{{ approve.message }}</div>{% endif %}
+      {% if case.action_result.get("result") %}<div style="margin-top:10px"><code>{{ case.action_result.result }}</code></div>{% endif %}
+    </section>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <section>
+      <h2>AI assessment</h2>
+      {% if not v %}<div class="muted">Not run yet.</div>
+      {% elif v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
+      {% else %}
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:15px;font-weight:600;color:{{ 'var(--crit)' if v.verdict == 'true_positive' else ('var(--ok)' if v.verdict == 'benign' else 'var(--high)') }}">{{ v.verdict.replace("_", " ")|capitalize }}</span>
+          <span class="mono muted">{{ (v.confidence * 100)|round|int }}%</span>
+        </div>
+        <div class="meter {{ v.verdict }}"><i style="width:{{ (v.confidence * 100)|round|int }}%"></i></div>
+        <div style="color:var(--text-strong)">{{ v.summary }}</div>
+        {% if v.evidence %}<ul class="ev muted">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+        {% if v.rationale %}<details style="margin-top:10px"><summary>Reasoning</summary><p class="muted" style="margin:6px 0 0">{{ v.rationale }}</p></details>{% endif %}
+        <div class="faint" style="font-size:12px;margin-top:12px">{{ v.model or "model" }} · severity {{ v.severity }} · advisory only</div>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="card">
+    <section>
+      <h2>Case</h2>
+      <dl class="kv" style="grid-template-columns:90px minmax(0,1fr)">
+        <dt>ID</dt><dd class="mono" style="overflow-wrap:anywhere">{{ case.name }}</dd>
+        <dt>Engine</dt><dd>Argo workflow in <code>k8s-soar</code></dd>
+        {% if grafana_base %}<dt>Grafana</dt><dd><a href="{{ grafana_base }}" target="_blank" rel="noopener" class="mono">{{ grafana_base }}</a></dd>{% endif %}
+      </dl>
+    </section>
+  </div>
 </aside>
 </div>
 {% endblock %}
