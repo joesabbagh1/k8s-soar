@@ -56,7 +56,8 @@ def triage(req: TriageRequest) -> Verdict:
         verdict = run_triage(req.alert, req.context, req.decision, tools, cfg)
     except Exception as exc:  # provider outage, auth error, timeout...
         log.exception("triage failed")
-        verdict = Verdict.unavailable(f"{type(exc).__name__}: {exc}")
+        # Name the model actually used: most provider errors are a wrong model or key.
+        verdict = Verdict.unavailable(f"model {cfg.litellm_model}: {type(exc).__name__}: {exc}")
     # One JSON line per case -> Promtail -> Loki, for audit and quality review.
     audit.info(
         json.dumps(
