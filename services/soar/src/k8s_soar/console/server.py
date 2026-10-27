@@ -30,7 +30,7 @@ from .argo import ArgoClient, ArgoError, console_settings
 log = logging.getLogger("k8s_soar.console")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar console", version="0.4.1", docs_url=None, redoc_url=None)
+app = FastAPI(title="k8s-soar console", version="0.4.2", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
 templates.env.globals["offset"] = cases.offset
