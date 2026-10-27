@@ -1,7 +1,7 @@
 k8s-soar {{ .Chart.AppVersion }} installed in namespace {{ .Release.Namespace }}.
 
 Response mode : {{ .Values.response.mode }}{{ if eq .Values.response.mode "dry-run" }} (nothing will be modified){{ end }}
-Approval gate : {{ .Values.response.approvalGate }}
+Decisions     : {{ .Values.response.decisions.strategy }} strategy;{{ range $level, $p := .Values.response.decisions.levels }} {{ $level }}={{ $p.approval }}{{ if eq $p.approval "auto" }}({{ if eq $.Values.response.decisions.strategy "ai" }}ai{{ else }}{{ $p.action }}{{ end }}){{ end }}{{ end }}
 AI triage     : {{ if .Values.ai.enabled }}{{ .Values.ai.provider }}/{{ .Values.ai.model }}{{ else }}disabled (set ai.enabled=true, then `make ai-key`){{ end }}
 
 What happens when Falco fires a k8s-soar rule:

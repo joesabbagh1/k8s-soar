@@ -2,7 +2,7 @@
 # One Workflow per case. Open the Argo UI (make argo-ui) to watch each step,
 # read its logs and outputs, and approve follow-up actions.
 #
-#   guard -> case[ contain -> enrich -> triage -> notify -> review[ approve -> act ] ]
+#   guard -> case[ contain -> enrich -> triage -> decide -> notify -> auto-act | review[ approve -> act ] ]
 #
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
@@ -95,6 +95,12 @@ spec:
                   value: "{{`{{steps.enrich.outputs.parameters.context}}`}}"
                 - name: decision
                   value: "{{`{{inputs.parameters.decision}}`}}"
+        - - name: decide
+            template: decide
+            arguments:
+              parameters:
+                - name: verdict
+                  value: "{{`{{steps.triage.outputs.parameters.verdict}}`}}"
         - - name: notify
             template: notify
             continueOn:
@@ -107,10 +113,23 @@ spec:
                   value: "{{`{{steps.contain.outputs.parameters.result}}`}}"
                 - name: verdict
                   value: "{{`{{steps.triage.outputs.parameters.verdict}}`}}"
-        {{- if .Values.response.approvalGate }}
-        - - name: review
+                - name: route
+                  value: "{{`{{steps.decide.outputs.parameters.result}}`}}"
+        # Exactly one of these runs (or neither when the route is none).
+        - - name: auto-act
+            template: act
+            when: "'{{`{{steps.decide.outputs.parameters.route}}`}}' == 'auto' && '{{`{{steps.decide.outputs.parameters.action}}`}}' != 'none'"
+            arguments:
+              parameters:
+                - name: action
+                  value: "{{`{{steps.decide.outputs.parameters.action}}`}}"
+                - name: namespace
+                  value: "{{`{{inputs.parameters.namespace}}`}}"
+                - name: pod
+                  value: "{{`{{inputs.parameters.pod}}`}}"
+          - name: review
             template: review
-            when: "'{{`{{inputs.parameters.pod}}`}}' != ''"
+            when: "'{{`{{steps.decide.outputs.parameters.route}}`}}' == 'human'"
             arguments:
               parameters:
                 - name: namespace
@@ -137,7 +156,6 @@ spec:
                   value: "{{`{{inputs.parameters.namespace}}`}}"
                 - name: pod
                   value: "{{`{{inputs.parameters.pod}}`}}"
-        {{- end }}
 
     # 1. Route the alert and claim the pod (dedup). Outputs action=contain|notify|skip.
     - name: guard
@@ -195,21 +213,41 @@ spec:
               path: /tmp/outputs/recommended
               default: none
 
-    # 5. Slack / Jira / Grafana annotation (each only if configured).
+    # 5. Automatic action or analyst approval, per severity (response.decisions).
+    #    Outputs route=auto|human|none, action, and result (JSON with the reason).
+    - name: decide
+      inputs:
+        parameters:
+          - name: verdict
+      container:
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "decide" "--alert" "{{workflow.parameters.alert}}" "--verdict" "{{inputs.parameters.verdict}}")) | nindent 8 }}
+      outputs:
+        parameters:
+          {{- include "k8s-soar.output" "result" | nindent 10 }}
+          - name: route
+            valueFrom:
+              path: /tmp/outputs/route
+              default: human
+          - name: action
+            valueFrom:
+              path: /tmp/outputs/action
+              default: none
+
+    # 6. Slack, Teams, Google Chat, webhook, email, PagerDuty, Jira, Grafana (each only if configured).
     - name: notify
       inputs:
         parameters:
           - name: decision
           - name: contained
           - name: verdict
+          - name: route
       container:
-        {{- include "k8s-soar.step" (dict "root" . "args" (list "notify" "--alert" "{{workflow.parameters.alert}}" "--decision" "{{inputs.parameters.decision}}" "--contained" "{{inputs.parameters.contained}}" "--verdict" "{{inputs.parameters.verdict}}" "--workflow" "{{workflow.name}}")) | nindent 8 }}
+        {{- include "k8s-soar.step" (dict "root" . "args" (list "notify" "--alert" "{{workflow.parameters.alert}}" "--decision" "{{inputs.parameters.decision}}" "--contained" "{{inputs.parameters.contained}}" "--verdict" "{{inputs.parameters.verdict}}" "--route" "{{inputs.parameters.route}}" "--workflow" "{{workflow.name}}")) | nindent 8 }}
       outputs:
         parameters:
           {{- include "k8s-soar.output" "result" | nindent 10 }}
-    {{- if .Values.response.approvalGate }}
 
-    # 6. Human approval. In the Argo UI: open the case -> "approve" node -> RESUME,
+    # 7. Human approval. In the Argo UI: open the case -> "approve" node -> RESUME,
     #    pick an action (default 'none'). CLI: argo resume <case> -n {{ .Release.Namespace }}
     # The Argo UI's RESUME dialog sends back every input of this node as an
     # output parameter, so it must have exactly the inputs it outputs.
@@ -230,7 +268,7 @@ spec:
             valueFrom:
               supplied: {}
 
-    # 7. Run the approved action.
+    # 8. Run the action (approved by an analyst, or automatic).
     - name: act
       inputs:
         parameters:
@@ -242,5 +280,4 @@ spec:
       outputs:
         parameters:
           {{- include "k8s-soar.output" "result" | nindent 10 }}
-    {{- end }}
 {{- end }}

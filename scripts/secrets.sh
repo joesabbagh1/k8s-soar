@@ -6,7 +6,10 @@
 #   values in the cluster are kept unless the file sets them.
 #
 #   grafana-admin (monitoring)     generated once if absent
-#   soar-integrations (k8s-soar)   SLACK_WEBHOOK_URL, JIRA_*, GRAFANA_API_TOKEN
+#   soar-integrations (k8s-soar)   notification channels, JIRA_*, GRAFANA_API_TOKEN
+#
+# SOAR_SECRETS_REPLACE=true rebuilds soar-integrations from the file alone, so
+# channels removed from it are removed from the cluster (./k8s-soar configure).
 #   soar-ai (k8s-soar)             AI_API_KEY
 set -euo pipefail
 
@@ -59,8 +62,23 @@ if ! kubectl get secret -n monitoring grafana-admin >/dev/null 2>&1; then
   echo "Grafana admin password stored in monitoring/grafana-admin (make grafana-password)"
 fi
 
+if [[ "${SOAR_SECRETS_REPLACE:-false}" == true ]]; then
+  kubectl delete secret -n k8s-soar soar-integrations --ignore-not-found >/dev/null
+fi
 apply_secret k8s-soar soar-integrations \
   "slack-webhook-url=${SLACK_WEBHOOK_URL:-}" \
+  "teams-webhook-url=${TEAMS_WEBHOOK_URL:-}" \
+  "google-chat-webhook-url=${GOOGLE_CHAT_WEBHOOK_URL:-}" \
+  "webhook-url=${WEBHOOK_URL:-}" \
+  "webhook-secret=${WEBHOOK_SECRET:-}" \
+  "smtp-host=${SMTP_HOST:-}" \
+  "smtp-port=${SMTP_PORT:-}" \
+  "smtp-tls=${SMTP_TLS:-}" \
+  "smtp-username=${SMTP_USERNAME:-}" \
+  "smtp-password=${SMTP_PASSWORD:-}" \
+  "smtp-from=${SMTP_FROM:-}" \
+  "smtp-to=${SMTP_TO:-}" \
+  "pagerduty-routing-key=${PAGERDUTY_ROUTING_KEY:-}" \
   "jira-url=${JIRA_URL:-}" \
   "jira-email=${JIRA_EMAIL:-}" \
   "jira-api-token=${JIRA_API_TOKEN:-}" \

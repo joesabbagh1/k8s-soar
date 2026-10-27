@@ -1,4 +1,4 @@
-"""Step 5 — tell humans: Slack, Jira, Grafana annotation. Each channel is optional.
+"""Step 6 — tell humans: Slack, Teams, Google Chat, webhook, email, PagerDuty, Jira, Grafana. Each is optional.
 
 Alert content is attacker-controlled. It is only ever placed in JSON string
 fields (Slack mrkdwn is escaped), never evaluated.
@@ -12,6 +12,8 @@ from typing import Any
 import httpx
 
 from k8s_soar import grafana
+from k8s_soar.actions import channels
+from k8s_soar.actions.decide import describe
 from k8s_soar.alert import Alert
 from k8s_soar.config import Settings
 from k8s_soar.verdict import Verdict
@@ -44,7 +46,11 @@ def links(alert: Alert, settings: Settings, workflow: str) -> dict[str, str]:
 
 
 def _summary_lines(
-    alert: Alert, decision: dict[str, Any], contained: dict[str, Any], verdict: Verdict
+    alert: Alert,
+    decision: dict[str, Any],
+    contained: dict[str, Any],
+    verdict: Verdict,
+    route: dict[str, Any] | None = None,
 ) -> list[tuple[str, str]]:
     mitre = ", ".join(f"{t['id']} {t['name']}" for t in alert.mitre) or "—"
     rows = [
@@ -60,6 +66,8 @@ def _summary_lines(
         rows.append(("Time to contain", f"{contained.get('latency_seconds', '?')}s"))
         if contained.get("orphaned"):
             rows.append(("Controller", "pod detached from controller; a clean replacement was scheduled"))
+    if route:
+        rows.append(("Next step", describe(route)))
     if verdict.verdict != "unavailable":
         rows.append(("AI verdict", f"{verdict.verdict} ({verdict.confidence:.0%}, {verdict.severity})"))
         rows.append(("AI recommends", ", ".join(verdict.recommended_actions) or "none"))
@@ -74,10 +82,11 @@ def slack(
     settings: Settings,
     workflow: str,
     jira_key: str = "",
+    route: dict[str, Any] | None = None,
 ) -> bool:
     if not settings.slack_webhook_url:
         return False
-    rows = _summary_lines(alert, decision, contained, verdict)
+    rows = _summary_lines(alert, decision, contained, verdict, route)
     fields = [{"type": "mrkdwn", "text": f"*{k}*\n{_slack_escape(str(v))[:500]}"} for k, v in rows]
     blocks: list[dict[str, Any]] = [
         {"type": "header", "text": {"type": "plain_text", "text": f"🚨 {alert.rule}"[:150]}},
@@ -121,8 +130,9 @@ def jira_body(
     verdict: Verdict,
     settings: Settings,
     workflow: str,
+    route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    rows = _summary_lines(alert, decision, contained, verdict)
+    rows = _summary_lines(alert, decision, contained, verdict, route)
     table = {
         "type": "table",
         "content": [
@@ -210,12 +220,13 @@ def jira(
     verdict: Verdict,
     settings: Settings,
     workflow: str,
+    route: dict[str, Any] | None = None,
 ) -> str:
     if not (settings.jira_url and settings.jira_api_token and settings.jira_project_key):
         return ""
     resp = httpx.post(
         f"{settings.jira_url}/rest/api/3/issue",
-        json=jira_body(alert, decision, contained, verdict, settings, workflow),
+        json=jira_body(alert, decision, contained, verdict, settings, workflow, route),
         auth=(settings.jira_email, settings.jira_api_token),
         headers={"Accept": "application/json"},
         timeout=settings.http_timeout,
@@ -241,6 +252,35 @@ def grafana_annotation(alert: Alert, decision: dict[str, Any], settings: Setting
     return True
 
 
+def message(
+    alert: Alert,
+    decision: dict[str, Any],
+    contained: dict[str, Any],
+    verdict: Verdict,
+    settings: Settings,
+    workflow: str,
+    route: dict[str, Any] | None = None,
+) -> channels.Message:
+    return channels.Message(
+        case=workflow,
+        title=alert.short(),
+        rule=alert.rule,
+        severity=alert.severity,
+        rows=[(k, str(v)) for k, v in _summary_lines(alert, decision, contained, verdict, route)],
+        output=alert.output[:5000],
+        next_step=describe(route) if route else "",
+        ai_summary=verdict.summary if verdict.verdict != "unavailable" else "",
+        links=links(alert, settings, workflow),
+        data={
+            "alert": alert.model_dump(mode="json"),
+            "decision": decision,
+            "containment": contained,
+            "route": route or {},
+            "verdict": verdict.model_dump(),
+        },
+    )
+
+
 def notify_all(
     alert: Alert,
     decision: dict[str, Any],
@@ -248,22 +288,26 @@ def notify_all(
     verdict: Verdict,
     settings: Settings,
     workflow: str,
+    route: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Send to every configured channel; one failing channel does not stop the others."""
     result: dict[str, Any] = {}
     jira_key = ""
     try:
-        jira_key = jira(alert, decision, contained, verdict, settings, workflow)
+        jira_key = jira(alert, decision, contained, verdict, settings, workflow, route)
         result["jira"] = jira_key or "not configured"
     except httpx.HTTPError as exc:
         result["jira"] = f"error: {exc}"
-    for name, send in (
-        ("slack", lambda: slack(alert, decision, contained, verdict, settings, workflow, jira_key)),
-        ("grafana", lambda: grafana_annotation(alert, decision, settings)),
-    ):
+    msg = message(alert, decision, contained, verdict, settings, workflow, route)
+    senders = {
+        "slack": lambda: slack(alert, decision, contained, verdict, settings, workflow, jira_key, route),
+        **{name: (lambda send=send: send(msg, settings)) for name, send in channels.SENDERS.items()},
+        "grafana": lambda: grafana_annotation(alert, decision, settings),
+    }
+    for name, send in senders.items():
         try:
             result[name] = "sent" if send() else "not configured"
-        except httpx.HTTPError as exc:
-            result[name] = f"error: {exc}"
+        except (httpx.HTTPError, OSError) as exc:  # OSError: SMTP connection/auth failures
+            result[name] = f"error: {type(exc).__name__}: {exc}"[:300]
     log.info("notifications: %s", result)
     return result

@@ -31,6 +31,25 @@ PRIORITY_ORDER = [
 ]
 
 
+# The four levels decisions are configured on (see actions/decide.py).
+SEVERITY_LEVELS = ["low", "medium", "high", "critical"]
+
+
+def severity_level(priority: str) -> str:
+    """critical/alert/emergency -> critical, error -> high, warning -> medium, the rest -> low."""
+    try:
+        rank = PRIORITY_ORDER.index(priority.lower())
+    except ValueError:
+        rank = PRIORITY_ORDER.index("warning")
+    if rank >= PRIORITY_ORDER.index("critical"):
+        return "critical"
+    if rank == PRIORITY_ORDER.index("error"):
+        return "high"
+    if rank == PRIORITY_ORDER.index("warning"):
+        return "medium"
+    return "low"
+
+
 class Alert(BaseModel):
     source: str = "falco"
     rule: str
@@ -59,6 +78,10 @@ class Alert(BaseModel):
             return PRIORITY_ORDER.index(self.priority.lower())
         except ValueError:
             return PRIORITY_ORDER.index("warning")
+
+    @property
+    def severity(self) -> str:
+        return severity_level(self.priority)
 
     @property
     def mitre(self) -> list[dict[str, str]]:

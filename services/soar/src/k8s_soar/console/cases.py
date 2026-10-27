@@ -205,7 +205,8 @@ class Case:
         """Short state of the pod for the case list: quarantined / deleted / released / scaled to zero."""
         if not self.contained:
             return ""
-        done = self.action_result and self.steps.get("act") and self.steps["act"].phase == "Succeeded"
+        act = self.act_step
+        done = act is not None and act.phase == "Succeeded"
         return {
             "delete-pod": "deleted",
             "release-quarantine": "released",
@@ -243,13 +244,34 @@ class Case:
         return value if isinstance(value, dict) else {}
 
     @property
+    def route(self) -> dict[str, Any]:
+        """Output of the decide step: {route: auto|human|none, action, reason}."""
+        step = self.steps.get("decide")
+        value = step.output("result") if step else None
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def automatic(self) -> bool:
+        return self.route.get("route") == "auto"
+
+    @property
     def chosen_action(self) -> str:
+        if self.automatic and self.steps.get("decide") and self.steps["decide"].phase == "Succeeded":
+            return self.route.get("action") or "none"
         step = self.steps.get("approve")
         return (step.outputs.get("action") or "") if step and step.phase == "Succeeded" else ""
 
     @property
+    def act_step(self) -> Step | None:
+        for name in ("auto-act", "act"):
+            step = self.steps.get(name)
+            if step and step.phase != "Skipped":
+                return step
+        return None
+
+    @property
     def action_result(self) -> dict[str, Any]:
-        step = self.steps.get("act")
+        step = self.act_step
         value = step.output("result") if step else None
         return value if isinstance(value, dict) else {}
 
@@ -270,7 +292,8 @@ class Case:
     @property
     def status_label(self) -> str:
         if self.status == CLOSED and self.chosen_action:
-            return CLOSED_LABELS.get(self.chosen_action, f"Closed — {self.chosen_action}")
+            label = CLOSED_LABELS.get(self.chosen_action, f"Closed — {self.chosen_action}")
+            return label + " (auto)" if self.automatic else label
         return STATUS_LABELS[self.status]
 
     @property
@@ -429,6 +452,18 @@ class Case:
             else:
                 events.append(Event(notify.finished, "No notification channels configured", "Slack, Jira, Grafana"))
 
+        decide = self.steps.get("decide")
+        route = self.route
+        if decide and decide.phase == "Succeeded" and route:
+            if route.get("route") == "auto":
+                action = route.get("action", "none")
+                title = "Automatic response: " + (
+                    "no further action" if action == "none" else ACTION_LABELS.get(action, action).lower()
+                )
+                events.append(Event(decide.finished, title, route.get("reason", ""), "warn"))
+            elif route.get("route") == "human":
+                events.append(Event(decide.finished, "Sent to an analyst", route.get("reason", "")))
+
         approve = self.steps.get("approve")
         if approve and approve.phase == "Running":
             events.append(Event(approve.started, "Waiting for an analyst decision", "", "warn"))
@@ -436,12 +471,14 @@ class Case:
             label = ACTION_LABELS.get(self.chosen_action, self.chosen_action or "none")
             events.append(Event(approve.finished, f"Decision: {label}", approve.message))
 
-        act = self.steps.get("act")
+        act = self.act_step
         if act and act.phase == "Succeeded":
             events.append(Event(act.finished, "Action executed", str(self.action_result.get("result", "")), "good"))
         elif act and act.phase in ("Failed", "Error"):
             events.append(Event(act.finished, "Action failed", act.message, "bad"))
 
+        far = datetime.max.replace(tzinfo=UTC)
+        events.sort(key=lambda e: e.when or far)  # stable: same-second events keep step order
         if self.phase in ("Failed", "Error") and self.message:
             events.append(Event(None, "Case failed", self.message, "bad"))
         return events
@@ -464,6 +501,8 @@ def from_workflow(wf: dict[str, Any]) -> Case:
         name = node.get("displayName", "")
         if node.get("type") not in ("Pod", "Suspend", "Skipped"):
             continue
+        if node.get("type") == "Skipped" and name in steps:
+            continue  # never let a skipped branch hide the step that ran
         outputs = {p.get("name"): p.get("value", "") for p in (node.get("outputs") or {}).get("parameters") or []}
         steps[name] = Step(
             name=name,

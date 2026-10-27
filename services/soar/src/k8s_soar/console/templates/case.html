@@ -242,10 +242,11 @@ ul.ev { margin: 6px 0 0; padding-left: 16px; } ul.ev li { margin: 3px 0; }
   {% elif case.chosen_action %}
   <div class="card">
     <section>
-      <h2>Decision</h2>
-      <div style="color:var(--text-strong);font-weight:550">{{ case.status_label }}</div>
+      <h2>{{ "Automatic decision" if case.automatic else "Decision" }}</h2>
+      <div style="color:var(--text-strong);font-weight:550">{{ case.status_label if case.status == "closed" else (case.chosen_action|replace("-", " ")|capitalize) }}</div>
       {% set approve = case.steps.get("approve") %}
-      {% if approve and approve.message %}<div class="muted" style="margin-top:2px">{{ approve.message }}</div>{% endif %}
+      {% if case.automatic %}<div class="muted" style="margin-top:2px">{{ case.route.reason }}</div>
+      {% elif approve and approve.message %}<div class="muted" style="margin-top:2px">{{ approve.message }}</div>{% endif %}
       {% if case.action_result.get("result") %}<div style="margin-top:10px"><code>{{ case.action_result.result }}</code></div>{% endif %}
     </section>
   </div>

@@ -27,8 +27,16 @@ def _node(
 
 
 def workflow(
-    *, approve="Running", act=None, alert=None, verdict=None, phase="Running", name="k8ssoar-reverse-shell-abcde"
+    *,
+    approve="Running",
+    act=None,
+    alert=None,
+    verdict=None,
+    phase="Running",
+    name="k8ssoar-reverse-shell-abcde",
+    route=None,
 ):
+    route = route or {"route": "human", "action": "none", "reason": "critical alerts need an analyst decision"}
     verdict = verdict or {
         "verdict": "true_positive",
         "confidence": 0.9,
@@ -72,19 +80,25 @@ def workflow(
             ),
         ),
         "t": _node("triage", verdict=json.dumps(verdict), recommended="delete-pod"),
+        "d": _node("decide", result=json.dumps(route), route=route["route"], action=route["action"]),
         "n": _node(
             "notify", result=json.dumps({"slack": "sent", "jira": "not configured", "grafana": "not configured"})
         ),
     }
+    later = {"started": "2026-10-26T10:00:03Z", "finished": "2026-10-26T10:00:04Z"}
     if approve:
         nodes["a"] = _node(
-            "approve", phase=approve, type_="Suspend", action="" if approve == "Running" else "delete-pod"
+            "approve", phase=approve, type_="Suspend", action="" if approve == "Running" else "delete-pod", **later
         )
         if approve == "Succeeded":
             nodes["a"]["message"] = "delete-pod by alice: confirmed reverse shell"
     if act:
         nodes["x"] = _node(
-            "act", phase=act, result=json.dumps({"action": "delete-pod", "result": "deleted pod shop/web"})
+            "auto-act" if route["route"] == "auto" else "act",
+            phase=act,
+            result=json.dumps({"action": "delete-pod", "result": "deleted pod shop/web"}),
+            started="2026-10-26T10:00:05Z",
+            finished="2026-10-26T10:00:06Z",
         )
     return {
         "metadata": {"name": name, "creationTimestamp": "2026-10-26T10:00:00Z"},
@@ -110,6 +124,16 @@ def test_awaiting_case_reads_like_a_case():
     assert "Pod quarantined and network-isolated" in titles
     assert "AI verdict: True positive (90% confidence)" in titles
     assert titles[-1] == "Waiting for an analyst decision"
+
+
+def test_automatic_case_closes_without_a_decision():
+    route = {"route": "auto", "action": "delete-pod", "reason": "automatic policy for critical alerts: delete-pod"}
+    case = cases.from_workflow(workflow(approve=None, act="Succeeded", phase="Succeeded", route=route))
+    assert case.automatic and case.chosen_action == "delete-pod"
+    assert case.status_label == "Closed — pod deleted (auto)"
+    assert case.pod_state == "deleted"
+    titles = [e.title for e in case.timeline]
+    assert "Automatic response: delete pod" in titles and titles[-1] == "Action executed"
 
 
 def test_choices_offer_release_only_when_contained():

@@ -97,8 +97,23 @@ response:
   orphanFromController: true
   # Same rule on the same pod within this window opens no new case.
   dedupMinutes: 10
-  # Analyst approval gate (Argo suspend step) for destructive follow-ups.
-  approvalGate: true
+  # Who decides the follow-up action, per severity level. Falco priorities map
+  # to levels: critical/alert/emergency -> critical, error -> high,
+  # warning -> medium, notice and below -> low.
+  #   approval: human   case waits for an analyst (console / Argo UI)
+  #   approval: auto    k8s-soar acts on its own, per `strategy`:
+  #     policy  run the level's `action` (none | delete-pod | scale-to-zero)
+  #     ai      run the AI's recommendation if it is a true positive with
+  #             confidence >= aiMinConfidence; otherwise ask an analyst
+  # `./k8s-soar setup` writes these for you.
+  decisions:
+    strategy: policy
+    aiMinConfidence: 0.85
+    levels:
+      critical: { approval: human, action: none }
+      high:     { approval: human, action: none }
+      medium:   { approval: human, action: none }
+      low:      { approval: human, action: none }
   # Max new response workflows per second (burst protection).
   rateLimitPerSecond: 10
   # How long finished cases stay visible in the Argo UI.
@@ -114,9 +129,12 @@ response:
       limits: { memory: 256Mi }
 
 integrations:
-  # Secret with optional keys: slack-webhook-url, jira-url, jira-email,
-  # jira-api-token, jira-project-key, grafana-api-token.
+  # Secret with optional keys (see k8s-soar.integrationKeys in _helpers.tpl):
+  # slack/teams/google-chat webhook URLs, webhook-url(+secret), smtp-*,
+  # pagerduty-routing-key, jira-*, grafana-api-token.
   secretName: soar-integrations
+  # PagerDuty pages only from this level up: critical | high | medium | low.
+  pagerdutyMinSeverity: critical
   jiraIssueType: Task
   lokiUrl: http://loki.monitoring.svc.cluster.local:3100
   grafanaUrl: http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local

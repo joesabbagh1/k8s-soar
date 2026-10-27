@@ -31,6 +31,28 @@ exclude:
 {{- end }}
 
 {{/* Container spec shared by all workflow steps: k8s-soar.step (dict "root" . "args" (list ...)) */}}
+{{/* Env var -> key in the integrations Secret (all optional; written by ./k8s-soar setup or make secrets). */}}
+{{- define "k8s-soar.integrationKeys" -}}
+SLACK_WEBHOOK_URL: slack-webhook-url
+TEAMS_WEBHOOK_URL: teams-webhook-url
+GOOGLE_CHAT_WEBHOOK_URL: google-chat-webhook-url
+WEBHOOK_URL: webhook-url
+WEBHOOK_SECRET: webhook-secret
+SMTP_HOST: smtp-host
+SMTP_PORT: smtp-port
+SMTP_TLS: smtp-tls
+SMTP_USERNAME: smtp-username
+SMTP_PASSWORD: smtp-password
+SMTP_FROM: smtp-from
+SMTP_TO: smtp-to
+PAGERDUTY_ROUTING_KEY: pagerduty-routing-key
+JIRA_URL: jira-url
+JIRA_EMAIL: jira-email
+JIRA_API_TOKEN: jira-api-token
+JIRA_PROJECT_KEY: jira-project-key
+GRAFANA_API_TOKEN: grafana-api-token
+{{- end }}
+
 {{- define "k8s-soar.step" -}}
 image: {{ include "k8s-soar.image" (dict "root" .root "name" .root.Values.response.actions.image) }}
 imagePullPolicy: {{ .root.Values.image.pullPolicy }}
@@ -41,7 +63,7 @@ envFrom:
   - configMapRef:
       name: soar-config
 env:
-  {{- range $env, $key := dict "SLACK_WEBHOOK_URL" "slack-webhook-url" "JIRA_URL" "jira-url" "JIRA_EMAIL" "jira-email" "JIRA_API_TOKEN" "jira-api-token" "JIRA_PROJECT_KEY" "jira-project-key" "GRAFANA_API_TOKEN" "grafana-api-token" }}
+  {{- range $env, $key := include "k8s-soar.integrationKeys" . | fromYaml }}
   - name: {{ $env }}
     valueFrom:
       secretKeyRef:

@@ -20,4 +20,6 @@ data:
   SOAR_ARGO_EXTERNAL_URL: {{ .Values.integrations.argoExternalUrl | quote }}
   SOAR_CONSOLE_EXTERNAL_URL: {{ .Values.console.externalUrl | quote }}
   JIRA_ISSUE_TYPE: {{ .Values.integrations.jiraIssueType | quote }}
+  SOAR_PAGERDUTY_MIN_SEVERITY: {{ .Values.integrations.pagerdutyMinSeverity | quote }}
+  SOAR_DECISIONS: {{ .Values.response.decisions | toJson | quote }}
 {{- end }}

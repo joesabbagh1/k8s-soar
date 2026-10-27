@@ -33,7 +33,15 @@ argo:
 k8sSoar:
   response:
     mode: contain          # contain | notify | dry-run
-    approvalGate: true
+    # Per severity: approval human|auto, and the automatic action. Run
+    # `./k8s-soar configure` to set these interactively (writes profiles/local.yaml).
+    decisions:
+      strategy: policy     # policy | ai
+      levels:
+        critical: { approval: human, action: none }
+        high:     { approval: human, action: none }
+        medium:   { approval: human, action: none }
+        low:      { approval: human, action: none }
   ai:
     enabled: false
     provider: anthropic

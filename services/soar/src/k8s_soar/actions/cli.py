@@ -21,7 +21,7 @@ from k8s_soar.context import collect
 from k8s_soar.kube import kube
 from k8s_soar.verdict import Verdict
 
-from . import act, contain, guard, notify, triage
+from . import act, contain, decide, guard, notify, triage
 
 
 def _json_arg(value: str) -> dict[str, Any]:
@@ -81,12 +81,31 @@ def cmd_triage(args: argparse.Namespace) -> None:
     _write(args.out, "recommended", verdict.approval_default)
 
 
+def _verdict(raw: str) -> Verdict | None:
+    data = _json_arg(raw)
+    return Verdict.model_validate(data) if data else None
+
+
+def cmd_decide(args: argparse.Namespace) -> None:
+    alert = parse(args.alert)
+    route = decide.decide(alert, _verdict(args.verdict), settings(), decide.load_config())
+    print(f"severity: {alert.severity}")
+    _write(args.out, "route", route["route"])
+    _write(args.out, "action", route["action"])
+    _write(args.out, "result", route)
+
+
 def cmd_notify(args: argparse.Namespace) -> None:
     alert = parse(args.alert)
-    verdict_data = _json_arg(args.verdict)
-    verdict = Verdict.model_validate(verdict_data) if verdict_data else Verdict.unavailable("not run")
+    verdict = _verdict(args.verdict) or Verdict.unavailable("not run")
     result = notify.notify_all(
-        alert, _json_arg(args.decision), _json_arg(args.contained), verdict, settings(), args.workflow
+        alert,
+        _json_arg(args.decision),
+        _json_arg(args.contained),
+        verdict,
+        settings(),
+        args.workflow,
+        _json_arg(args.route) or None,
     )
     _write(args.out, "result", result)
 
@@ -120,12 +139,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--decision", default="")
     p.set_defaults(func=cmd_triage)
 
-    p = sub.add_parser("notify", help="Slack / Jira / Grafana")
+    p = sub.add_parser("decide", help="automatic action or analyst approval, per severity")
+    p.add_argument("--alert", required=True)
+    p.add_argument("--verdict", default="")
+    p.set_defaults(func=cmd_decide)
+
+    p = sub.add_parser("notify", help="Slack, Teams, Google Chat, webhook, email, PagerDuty, Jira, Grafana")
     p.add_argument("--alert", required=True)
     p.add_argument("--decision", default="")
     p.add_argument("--contained", default="")
     p.add_argument("--verdict", default="")
     p.add_argument("--workflow", default="")
+    p.add_argument("--route", default="", help="output of the decide step")
     p.set_defaults(func=cmd_notify)
 
     p = sub.add_parser("act", help="run an analyst-approved action")
