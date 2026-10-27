@@ -11,14 +11,20 @@
 # Settings you are expected to change live in deploy/profiles/<env>.yaml.
 # Per-component Helm values live in deploy/values/<release>.yaml.gotmpl.
 
+# profiles/local.yaml (gitignored, written by `./k8s-soar setup|configure`) is
+# applied last and overrides the profiles; it is optional.
 environments:
   default:
     values:
       - profiles/default.yaml
+      - profiles/local.yaml
+    missingFileHandler: Info
   lab:
     values:
       - profiles/default.yaml
       - profiles/lab.yaml
+      - profiles/local.yaml
+    missingFileHandler: Info
 ---
 helmDefaults:
   wait: true

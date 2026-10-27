@@ -5,6 +5,7 @@ dist/
 
 # Local configuration and secrets
 deploy/secrets.env
+deploy/profiles/local.yaml
 deploy/ansible/inventory.ini
 deploy/ansible/group_vars/all.yml
 deploy/ansible/secrets.yml

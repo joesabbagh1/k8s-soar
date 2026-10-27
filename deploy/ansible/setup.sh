@@ -45,6 +45,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# First run from a terminal: ask the setup questions first (response mode,
+# decisions, AI, notification channels). The wizard then calls this script again.
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+if [[ -z "${K8S_SOAR_SKIP_WIZARD:-}" && ! -f "${REPO_ROOT}/deploy/profiles/local.yaml" && -t 0 ]]; then
+  exec "${REPO_ROOT}/k8s-soar" setup
+fi
+
 PRE_SETUP_SCRIPT_DIR="$SCRIPT_DIR"
 # shellcheck source=lib/pre-setup.sh
 source "${SCRIPT_DIR}/lib/pre-setup.sh"
@@ -83,11 +90,8 @@ echo ""
 echo ">>> Bootstrapping kubeadm cluster and k8s-soar stack..."
 ansible-playbook -i inventory.ini site.yml "${EXTRA_ARGS[@]}" "${ANSIBLE_ARGS[@]}"
 
-CLUSTER_NAME="$(awk '/^cluster_name:/ {gsub(/"/, "", $2); print $2}' group_vars/all.yml)"
-ENV_FILE="${HOME}/.kube/${CLUSTER_NAME:-k8s-soar}.env"
-
 echo ""
-echo ">>> Bootstrap complete."
-echo ">>> New terminals load the cluster automatically. In this one run:"
-echo "      source ${ENV_FILE}"
-echo ">>> Then: make status    (from the repository root)"
+echo ">>> Bootstrap complete. kubectl is ready (~/.kube/config)."
+echo ">>> Next, from the repository root:"
+echo "      make smoke-test ARGS=--keep && make console"
+echo "      ./k8s-soar configure    # change response, decisions, AI or notifications later"

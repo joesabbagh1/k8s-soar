@@ -16,6 +16,15 @@ bootstrap: ## Bare metal: kubeadm cluster + full stack (runs deploy/ansible/setu
 preflight: ## Check tools and cluster prerequisites
 	./scripts/preflight.sh
 
+setup: ## Guided setup: questions, then install (./k8s-soar setup)
+	./k8s-soar setup
+
+configure: ## Change response, decisions, AI or notifications (./k8s-soar configure)
+	./k8s-soar configure
+
+test-notify: ## Send a test message to every configured channel
+	./k8s-soar test-notify
+
 secrets: ## Create/update Kubernetes Secrets from deploy/secrets.env
 	./scripts/secrets.sh
 
@@ -106,5 +115,5 @@ help:
 	  /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } \
 	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
-.PHONY: bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
+.PHONY: setup configure test-notify bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
 	argo-ui console grafana grafana-password smoke-test venv test lint images push help
