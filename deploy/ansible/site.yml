@@ -255,6 +255,18 @@
       failed_when: false
       when: configure_localhost | bool
 
+    # The env file only reaches new shells; kubectl's default path makes the
+    # cluster usable right away, including in the shell that ran setup.sh.
+    # Never replaces an existing ~/.kube/config.
+    - name: Use the cluster as the default kubeconfig if there is none
+      ansible.builtin.file:
+        src: "{{ kubeconfig_dest }}"
+        dest: "{{ lookup('env', 'HOME') }}/.kube/config"
+        state: link
+        force: false
+      failed_when: false
+      when: configure_localhost | bool
+
 - name: "5/5 Install k8s-soar stack"
   hosts: localhost
   connection: local
@@ -365,8 +377,9 @@
     - name: Next steps
       ansible.builtin.debug:
         msg:
-          - "kubectl in a new shell picks up the cluster automatically; in this one run: source {{ kubeconfig_env_file }}"
-          - "make status | make argo-ui | make grafana   (from {{ k8s_soar_root }})"
+          - "kubectl: ready in every shell (~/.kube/config links to {{ kubeconfig_dest }} unless you already had one; then: source {{ kubeconfig_env_file }})"
+          - "Try it: make smoke-test ARGS=--keep, then make console -> http://<this host>:8081   (from {{ k8s_soar_root }})"
+          - "More: make status | make grafana | make argo-ui"
 
     - name: Fail if verification did not pass
       ansible.builtin.fail:

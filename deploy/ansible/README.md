@@ -27,7 +27,7 @@ Options: `--force` (regenerate config), `--ip <addr>`, `--pre-setup-only`, plus 
 | 1/5 Preflight | k8s | kernel ≥ `min_kernel_version`, `/sys/fs/bpf` |
 | 2/5 Prepare nodes | k8s | swap off, kernel modules, sysctl, containerd (systemd cgroups), pinned kubeadm/kubelet/kubectl |
 | 3/5 Control plane | master, workers | `kubeadm init`, worker join, single-node taint removal |
-| 4/5 Operator | localhost | kubeconfig at `~/.kube/config-<cluster_name>`, env file sourced by bash/zsh |
+| 4/5 Operator | localhost | kubeconfig at `~/.kube/config-<cluster_name>`, linked as `~/.kube/config` if none exists; env file sourced by bash/zsh |
 | 5/5 Stack | localhost | pinned helm + helmfile, local-path StorageClass, `scripts/secrets.sh`, `helmfile apply`, `scripts/verify.sh` |
 
 Every task is idempotent; re-running upgrades nothing implicitly (package versions are held).
