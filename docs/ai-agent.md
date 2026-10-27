@@ -75,6 +75,12 @@ Verdict schema (`services/soar/src/k8s_soar/verdict.py`):
 - **Data leaving the cluster.** Alert payloads, pod metadata and (unless `sendLogs: false`) log
   lines are sent to the provider. Use a self-hosted model (Ollama, vLLM behind `baseUrl`) when
   that is not acceptable.
+- **Provider hiccups.** When a provider is overloaded, rate-limited or flaky (429, 5xx, timeouts,
+  connection errors), the call is retried up to `ai.maxRetries` times with exponential backoff
+  (2s, 4s, 8s, 16s with jitter). After that, `ai.fallbackModel` is tried if you set one, for
+  example a lighter model from the same provider. All of this stays within `ai.budgetSeconds`
+  (default 240) per case, and the triage step waits for that budget plus a margin. A wrong key or
+  model is not retried, so it shows up immediately as "unavailable: model …".
 - **Cost and latency bounds.** `maxToolCalls` (default 8), `maxTokens` per call, `timeoutSeconds`.
   On the last allowed call the model is forced to submit a verdict.
 - **Failure is harmless.** Provider errors, timeouts or invalid output yield

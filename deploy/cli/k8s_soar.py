@@ -679,6 +679,11 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
         if not default_model:
             print(dim("Use the model ID exactly as your provider lists it (no spaces, no 'models/' prefix)."))
         ai["model"] = ask("Model", default_model, required=True, validate=lambda m: model_check(ai["provider"], m))
+        print(dim("Optional: a second model from the same provider, used when the first is overloaded."))
+        fallback = ai.get("fallbackModel", "") if previous == ai["provider"] else ""
+        ai["fallbackModel"] = ask(
+            "Fallback model (Enter to skip)", fallback, validate=lambda m: model_check(ai["provider"], m)
+        )
         if ai["provider"] in ("ollama", "azure"):
             hint = (
                 "http://ollama.<namespace>:11434"

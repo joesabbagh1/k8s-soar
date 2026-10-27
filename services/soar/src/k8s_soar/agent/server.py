@@ -28,7 +28,7 @@ from .triage import run_triage
 log = logging.getLogger("k8s_soar.agent")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar agent", version="0.4.2")
+app = FastAPI(title="k8s-soar agent", version="0.4.3")
 
 
 class TriageRequest(BaseModel):

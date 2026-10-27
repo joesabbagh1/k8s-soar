@@ -97,6 +97,12 @@ spec:
               value: {{ .Values.ai.maxTokens | quote }}
             - name: AI_TIMEOUT_SECONDS
               value: {{ .Values.ai.timeoutSeconds | quote }}
+            - name: AI_MAX_RETRIES
+              value: {{ .Values.ai.maxRetries | quote }}
+            - name: AI_BUDGET_SECONDS
+              value: {{ .Values.ai.budgetSeconds | quote }}
+            - name: AI_FALLBACK_MODEL
+              value: {{ .Values.ai.fallbackModel | quote }}
             - name: AI_SEND_LOGS
               value: {{ .Values.ai.sendLogs | quote }}
             - name: AI_API_KEY

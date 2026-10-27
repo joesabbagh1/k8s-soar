@@ -25,6 +25,7 @@ class Settings(BaseModel):
     trusted_namespaces: list[str] = []
     dedup_minutes: int = 10
     agent_url: str = ""
+    agent_timeout: float = 300.0
     loki_url: str = ""
     grafana_url: str = ""
     grafana_external_url: str = ""
@@ -67,6 +68,7 @@ def settings() -> Settings:
         trusted_namespaces=_env_list("SOAR_TRUSTED_NAMESPACES", "kube-system"),
         dedup_minutes=int(_env("SOAR_DEDUP_MINUTES", "10") or 10),
         agent_url=_env("SOAR_AGENT_URL"),
+        agent_timeout=float(_env("SOAR_AGENT_TIMEOUT", "300") or 300),
         loki_url=_env("SOAR_LOKI_URL"),
         grafana_url=_env("SOAR_GRAFANA_URL"),
         grafana_external_url=_env("SOAR_GRAFANA_EXTERNAL_URL"),

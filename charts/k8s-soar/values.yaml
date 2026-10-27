@@ -180,7 +180,13 @@ ai:
   extraEnv: []
   maxToolCalls: 8
   maxTokens: 2048
-  timeoutSeconds: 60
+  timeoutSeconds: 60          # per model call
+  # Overloaded/rate-limited/flaky provider (429, 5xx, timeouts): retry with
+  # exponential backoff (2s, 4s, 8s, 16s...), then try fallbackModel (same
+  # provider, e.g. a lighter model). Everything stays within budgetSeconds per case.
+  maxRetries: 4
+  budgetSeconds: 240
+  fallbackModel: ""
   # Allow the agent to read pod logs (they are sent to the model provider).
   sendLogs: true
   image: k8s-soar-agent

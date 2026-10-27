@@ -125,3 +125,68 @@ def test_model_string_normalisation():
     assert AgentSettings(provider="gemini", model="models/gemini-2.5-flash").litellm_model == "gemini/gemini-2.5-flash"
     assert AgentSettings(provider="gemini", model=" gemini-2.5-flash ").litellm_model == "gemini/gemini-2.5-flash"
     assert AgentSettings(provider="openrouter", model="anthropic/claude-x").litellm_model == "anthropic/claude-x"
+
+
+# --- retries -------------------------------------------------------------------
+
+
+class ProviderError(Exception):
+    def __init__(self, status_code):
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
+
+
+class FlakyLLM(ScriptedLLM):
+    """Raises the queued exceptions first, then plays the scripted responses."""
+
+    def __init__(self, errors, responses):
+        super().__init__(responses)
+        self.errors = list(errors)
+
+    def __call__(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.errors:
+            raise self.errors.pop(0)
+        return self.responses.pop(0)
+
+
+def _submit():
+    return _response(tool_calls=[_call("1", "submit_verdict", VERDICT)])
+
+
+def test_transient_errors_are_retried_with_backoff(alert, kube_fake, settings):
+    llm = FlakyLLM([ProviderError(503), ProviderError(429)], [_submit()])
+    waits = []
+    cfg = AgentSettings(provider="gemini", model="g", api_key="k")
+    verdict = run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm, sleep=waits.append)
+    assert verdict.verdict == "true_positive"
+    assert len(llm.calls) == 3 and len(waits) == 2
+    assert 1.5 <= waits[0] <= 2.5 and 3 <= waits[1] <= 5  # 2s, 4s with jitter
+
+
+def test_permanent_errors_fail_fast(alert, kube_fake, settings):
+    import pytest
+
+    llm = FlakyLLM([ProviderError(400)], [_submit()])
+    cfg = AgentSettings(provider="gemini", model="g", api_key="k")
+    with pytest.raises(ProviderError):
+        run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm, sleep=lambda s: None)
+    assert len(llm.calls) == 1
+
+
+def test_fallback_model_after_retries(alert, kube_fake, settings):
+    llm = FlakyLLM([ProviderError(503)] * 3, [_submit()])
+    cfg = AgentSettings(provider="gemini", model="big", fallback_model="small", api_key="k", max_retries=2)
+    verdict = run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm, sleep=lambda s: None)
+    assert verdict.verdict == "true_positive"
+    assert [c["model"] for c in llm.calls] == ["gemini/big"] * 3 + ["gemini/small"]
+
+
+def test_budget_stops_retrying(alert, kube_fake, settings):
+    import pytest
+
+    llm = FlakyLLM([ProviderError(503)] * 10, [_submit()])
+    cfg = AgentSettings(provider="gemini", model="g", api_key="k", budget_seconds=5)
+    with pytest.raises(ProviderError):
+        run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm, sleep=lambda s: None)
+    assert len(llm.calls) < 10  # the 8s+ backoffs would overrun a 5s budget

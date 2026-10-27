@@ -14,6 +14,8 @@ data:
   SOAR_TRUSTED_NAMESPACES: {{ join "," .Values.trustedNamespaces | quote }}
   SOAR_DEDUP_MINUTES: {{ .Values.response.dedupMinutes | quote }}
   SOAR_AGENT_URL: {{ include "k8s-soar.agentUrl" . | quote }}
+  # The triage step waits for the agent's whole budget (retries included) plus a margin.
+  SOAR_AGENT_TIMEOUT: {{ add .Values.ai.budgetSeconds 60 | quote }}
   SOAR_LOKI_URL: {{ .Values.integrations.lokiUrl | quote }}
   SOAR_GRAFANA_URL: {{ .Values.integrations.grafanaUrl | quote }}
   SOAR_GRAFANA_EXTERNAL_URL: {{ .Values.integrations.grafanaExternalUrl | quote }}

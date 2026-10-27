@@ -14,8 +14,6 @@ from k8s_soar.verdict import Verdict
 
 log = logging.getLogger(__name__)
 
-AGENT_TIMEOUT = 120.0
-
 
 def triage(alert: Alert, context: dict[str, Any], decision: dict[str, Any], settings: Settings) -> Verdict:
     if not settings.agent_url:
@@ -26,7 +24,7 @@ def triage(alert: Alert, context: dict[str, Any], decision: dict[str, Any], sett
         "decision": decision,
     }
     try:
-        resp = httpx.post(f"{settings.agent_url}/triage", json=payload, timeout=AGENT_TIMEOUT)
+        resp = httpx.post(f"{settings.agent_url}/triage", json=payload, timeout=settings.agent_timeout)
         resp.raise_for_status()
         return Verdict.model_validate(resp.json())
     except (httpx.HTTPError, ValidationError, ValueError) as exc:
