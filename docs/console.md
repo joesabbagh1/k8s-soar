@@ -11,7 +11,8 @@ make console            # http://<host>:8081  (port-forward on all interfaces;
 ## Case list
 
 Open cases come first, ordered by status: **Awaiting decision**, then **In progress** and
-**Failed**. Each row shows the severity, the detection in plain words, the workload, whether
+**Failed**. Cases decided automatically (see [Decisions](response.md#decisions)) close on their
+own, for example "Closed — pod deleted (auto)", and the reason is in the timeline. Each row shows the severity, the detection in plain words, the workload, whether
 it was quarantined, the AI verdict, and the case's age. The page refreshes every 20 seconds.
 The **Closed** and **All** tabs show the cases that are finished.
 

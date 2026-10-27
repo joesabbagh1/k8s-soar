@@ -1,6 +1,6 @@
 # k8s-soar
 
-> Kubernetes runtime **detection → automated containment → AI-assisted triage → human-approved response**.
+> Kubernetes runtime **detection → automated containment → AI-assisted triage → analyst-approved or automatic response**.
 > Falco + Tetragon + Kyverno + Cilium, orchestrated by Argo Events/Workflows, with an optional LLM triage agent (bring your own provider).
 
 [![CI](https://github.com/joesabbagh1/k8s-soar/actions/workflows/ci.yml/badge.svg)](https://github.com/joesabbagh1/k8s-soar/actions/workflows/ci.yml)
@@ -44,17 +44,22 @@ Concretely, for `kubectl exec` into a pod followed by `cat /var/run/secrets/.../
 5. **enrich** collects pod spec, owner chain, events, recent logs, other Falco alerts and Tetragon events for that pod.
 6. **triage** (optional) asks the AI agent for a verdict: `true_positive | benign | needs_review`, confidence, evidence and recommended next action.
 7. **notify** posts to Slack, opens a Jira issue (MITRE mapping, evidence, AI summary, links) and annotates Grafana — each only if configured.
-8. **approve** pauses the case. In the **console** (`make console`), an analyst sees what happened, what k8s-soar already did, the evidence and the AI verdict, then picks **Delete pod**, **Scale to zero**, **False positive — release** or **Close**. Nothing destructive happens without a human.
+8. **decide** applies the per-severity setting. **Automatic** levels run the configured action (or the AI's pick, above a confidence threshold) right away. **Analyst** levels pause the case. In the **console** (`make console`), an analyst sees what happened, what k8s-soar already did, the evidence and the AI verdict, then picks **Delete pod**, **Scale to zero**, **False positive — release** or **Close**. By default every level waits for an analyst; automatic actions happen only where you enabled them.
 
 The console is the analyst view ([docs](docs/console.md)). Argo's UI (`make argo-ui`) still shows each step's raw inputs, outputs and logs for debugging, and `make cases` lists cases in the terminal.
 
 ## Quick start
 
-**Bare metal, from scratch** (Ubuntu 22.04+, kernel ≥ 5.10):
+**Guided setup** (Ubuntu 22.04+, kernel ≥ 5.10, or any cluster in your kubeconfig):
 
 ```bash
-cd deploy/ansible && ./setup.sh        # kubeadm cluster + full stack
+./k8s-soar setup      # asks: cluster, response mode, AI, analyst vs automatic per severity,
+                      # notification channels (Slack, Teams, Google Chat, webhook, email,
+                      # PagerDuty, Jira) with test messages; then installs
+./k8s-soar configure  # change any of it later
 ```
+
+**Bare metal, non-interactive:** `cd deploy/ansible && ./setup.sh` (kubeadm cluster + full stack).
 
 **Existing cluster** (no CNI yet, or already Cilium — see [operations](docs/operations.md)):
 

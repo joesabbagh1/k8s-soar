@@ -62,9 +62,12 @@ Verdict schema (`services/soar/src/k8s_soar/verdict.py`):
 
 ## Safety model
 
-- **Advisory only.** The agent has no write RBAC. Its recommendation pre-fills nothing; the
-  approval gate defaults to `none`; the recommendation is shown on the triage step and in notifications. Containment never
-  depends on the AI.
+- **Advisory by default.** The agent has no write RBAC, and containment never depends on it.
+  At the approval gate its recommendation is only marked: the analyst chooses, and the default
+  is `none`. The exception is a severity level set to `approval: auto` with `strategy: ai`.
+  There, the workflow (not the agent) runs the recommended `delete-pod` or `scale-to-zero` when
+  the verdict is *true positive* above `aiMinConfidence`. Anything else goes to an analyst, and
+  `release-quarantine` is never automatic. See [Decisions](response.md#decisions).
 - **Prompt injection.** Alert fields, logs and tool results are attacker-controlled. They are
   fenced as `<untrusted_data>`, the system prompt instructs the model never to follow
   instructions found in data, tools are namespace-bound, and the output is a fixed schema

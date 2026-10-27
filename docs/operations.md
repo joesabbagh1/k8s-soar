@@ -4,7 +4,8 @@
 
 | Situation | Command |
 |-----------|---------|
-| Bare-metal / VMs, nothing installed | `cd deploy/ansible && ./setup.sh` (kubeadm → helmfile) |
+| Any: guided | `./k8s-soar setup`. It asks the questions below, then creates a cluster or uses yours |
+| Bare-metal / VMs, nothing installed | `cd deploy/ansible && ./setup.sh` (on first run it starts `./k8s-soar setup`; kubeadm → helmfile) |
 | kubeadm done, no CNI | `make deploy` (installs Cilium first) |
 | Cluster already running Cilium | set `cilium.install: false` in the profile, `make deploy` |
 | Cluster with another CNI | possible, but quarantine needs Cilium: pods get labelled, not isolated |
@@ -17,10 +18,26 @@ Images: the chart pulls `ghcr.io/joesabbagh1/k8s-soar-actions` and `k8s-soar-age
 chart's `appVersion`. Before the first release is published (or for local changes), build and
 push your own: `make push REGISTRY=ghcr.io/<you>` and set `k8sSoar.image.registry`.
 
+## Setup CLI
+
+`./k8s-soar` uses only the Python standard library, so it runs on a fresh machine.
+
+| Command | What it does |
+|---------|--------------|
+| `./k8s-soar setup` | Asks, in order: cluster (new kubeadm or existing), response mode, AI provider/model/key, decisions per severity (analyst or automatic; policy or AI), notification channels with tokens and a test message, optional URLs. Then shows a summary, saves, and installs |
+| `./k8s-soar configure` | The same questions, pre-filled with the current values; applies only the k8s-soar release. Removing a channel removes its secret |
+| `./k8s-soar test-notify` | Sends a test message to every configured channel |
+| `./k8s-soar status` | `scripts/verify.sh` |
+
+Answers are stored in `deploy/profiles/local.yaml` (settings; helmfile applies it after the
+profiles) and `deploy/secrets.env` (tokens, mode 600). Both files are gitignored. Without a
+terminal (CI, GitOps), edit those two files and run `make secrets deploy`.
+
 ## Configuration map
 
 | What | Where |
 |------|-------|
+| Answers from `./k8s-soar setup/configure` (overrides profiles) | `deploy/profiles/local.yaml`, `deploy/secrets.env` |
 | Response mode, AI provider/model, lab, external URLs | `deploy/profiles/<env>.yaml` → `k8sSoar` |
 | Everything else in the k8s-soar chart | `charts/k8s-soar/values.yaml` (override under `k8sSoar` in the profile) |
 | Component settings (Falco, Argo, Loki, ...) | `deploy/values/<release>.yaml.gotmpl` |
