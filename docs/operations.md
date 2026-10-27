@@ -20,7 +20,11 @@ push your own: `make push REGISTRY=ghcr.io/<you>` and set `k8sSoar.image.registr
 
 ## Setup CLI
 
-`./k8s-soar` uses only the Python standard library, so it runs on a fresh machine.
+`./k8s-soar` uses only the Python standard library, so it runs on a fresh machine. Prompts use
+the arrow keys (↑/↓ to move, space to toggle, ←/→ for yes/no, enter to confirm), and every
+answer collapses into a `✔ question · answer` line. `configure` applies everything itself: it
+updates the Secrets and redeploys k8s-soar, so there is nothing else to run. Without a terminal
+it falls back to numbered prompts.
 
 | Command | What it does |
 |---------|--------------|

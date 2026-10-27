@@ -26,6 +26,7 @@ import smtplib
 import ssl
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from email.message import EmailMessage
@@ -77,8 +78,19 @@ SECRET_ORDER = [k for keys in CHANNEL_KEYS.values() for k in keys] + [
 ]
 
 # --- terminal ------------------------------------------------------------------
+# Arrow-key prompts in the style of create-next-app: ↑/↓ to move, space to toggle,
+# ←/→ for yes/no, enter to confirm. Falls back to numbered prompts when stdin is
+# not a terminal (or termios is unavailable).
+
+try:
+    import select
+    import termios
+    import tty
+except ImportError:  # Windows
+    termios = None
 
 COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+INTERACTIVE = termios is not None and sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def _c(code: str, text: str) -> str:
@@ -97,6 +109,10 @@ def green(t: str) -> str:
     return _c("32", t)
 
 
+def cyan(t: str) -> str:
+    return _c("36", t)
+
+
 def yellow(t: str) -> str:
     return _c("33", t)
 
@@ -107,75 +123,262 @@ def red(t: str) -> str:
 
 def step(n: int, total: int, title: str, help_text: str = "") -> None:
     print()
-    print(bold(f"[{n}/{total}] {title}"))
+    print(bold(f"{title}") + dim(f"  {n}/{total}"))
     if help_text:
         print(dim(help_text))
 
 
+def _done(question: str, answer: str) -> None:
+    print(f"{green('✔')} {bold(question)} {dim('·')} {cyan(answer)}")
+
+
+def _width() -> int:
+    return max(shutil.get_terminal_size((100, 24)).columns - 1, 20)
+
+
+def _fit(text: str, visible: int) -> str:
+    """Keep each menu line on one terminal row so redraws stay aligned."""
+    room = _width() - visible
+    return text if len(text) <= room else text[: max(room - 1, 1)] + "…"
+
+
+class _Keys:
+    """Read single keys from the terminal without echo; Ctrl-C still raises KeyboardInterrupt."""
+
+    def __enter__(self):
+        self.fd = sys.stdin.fileno()
+        self.saved = termios.tcgetattr(self.fd)
+        tty.setcbreak(self.fd)
+        sys.stdout.write("\033[?25l")  # hide cursor
+        sys.stdout.flush()
+        return self
+
+    def __exit__(self, *exc):
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.saved)
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+        return False
+
+    def read(self) -> str:
+        ch = os.read(self.fd, 1)
+        if ch == b"\x1b":
+            # Exactly one escape sequence (ESC [ X or ESC O X), even when more keys
+            # arrived in the same burst (fast typing, paste, slow SSH).
+            if not select.select([self.fd], [], [], 0.05)[0]:
+                return "esc"
+            intro = os.read(self.fd, 1)
+            if intro not in (b"[", b"O"):
+                return "esc"
+            final = os.read(self.fd, 1)
+            while final.isdigit() or final == b";":  # e.g. ESC [ 1 ; 5 A (modifiers)
+                final = os.read(self.fd, 1)
+            return {b"A": "up", b"B": "down", b"C": "right", b"D": "left"}.get(final, "esc")
+        if ch in (b"\r", b"\n"):
+            return "enter"
+        if ch == b" ":
+            return "space"
+        if ch == b"\x03":
+            raise KeyboardInterrupt
+        return ch.decode(errors="ignore").lower()
+
+
+class _Screen:
+    """Redraws a block of lines in place."""
+
+    def __init__(self) -> None:
+        self.lines = 0
+
+    def draw(self, lines: list[str]) -> None:
+        if self.lines:
+            sys.stdout.write(f"\033[{self.lines}F\033[J")
+        sys.stdout.write("\n".join(lines) + "\n")
+        sys.stdout.flush()
+        self.lines = len(lines)
+
+    def clear(self) -> None:
+        if self.lines:
+            sys.stdout.write(f"\033[{self.lines}F\033[J")
+            sys.stdout.flush()
+        self.lines = 0
+
+
+def _split(label: str) -> tuple[str, str]:
+    name, _, desc = label.partition(" — ")
+    return name.strip(), desc.strip()
+
+
+def choose(question: str, options: list[tuple[str, str]], default: str | None = None) -> str:
+    if not INTERACTIVE:
+        return _choose_numbered(question, options, default)
+    index = next((i for i, (v, _) in enumerate(options) if v == default), 0)
+    screen = _Screen()
+    with _Keys() as keys:
+        while True:
+            lines = [f"{cyan('?')} {bold(question)} {dim('› ↑↓ to move, enter to select')}"]
+            for i, (_, label) in enumerate(options):
+                name, desc = _split(label)
+                if i == index:
+                    text = _fit(name + (f" — {desc}" if desc else ""), 4)
+                    head, _, tail = text.partition(" — ")
+                    lines.append(f"{cyan('❯')} {cyan(head)}" + (dim(" — " + tail) if tail else ""))
+                else:
+                    lines.append(f"  {_fit(name, 4)}")
+            screen.draw(lines)
+            key = keys.read()
+            if key in ("up", "k"):
+                index = (index - 1) % len(options)
+            elif key in ("down", "j"):
+                index = (index + 1) % len(options)
+            elif key.isdigit() and 1 <= int(key) <= len(options):
+                index = int(key) - 1
+            elif key == "enter":
+                break
+    screen.clear()
+    _done(question, _split(options[index][1])[0])
+    return options[index][0]
+
+
+def choose_many(question: str, options: list[tuple[str, str]], defaults: list[str]) -> list[str]:
+    if not INTERACTIVE:
+        return _choose_many_numbered(question, options, defaults)
+    picked = {v for v, _ in options if v in defaults}
+    index = 0
+    screen = _Screen()
+    with _Keys() as keys:
+        while True:
+            lines = [f"{cyan('?')} {bold(question)} {dim('› space to select, a for all, enter to confirm')}"]
+            for i, (value, label) in enumerate(options):
+                box = green("◉") if value in picked else dim("◯")
+                pointer = cyan("❯") if i == index else " "
+                text = _fit(label, 6)
+                lines.append(f"{pointer} {box} {cyan(text) if i == index else text}")
+            screen.draw(lines)
+            key = keys.read()
+            if key in ("up", "k"):
+                index = (index - 1) % len(options)
+            elif key in ("down", "j"):
+                index = (index + 1) % len(options)
+            elif key == "space":
+                picked ^= {options[index][0]}
+            elif key == "a":
+                picked = set() if len(picked) == len(options) else {v for v, _ in options}
+            elif key == "enter":
+                break
+    screen.clear()
+    chosen = [v for v, _ in options if v in picked]
+    _done(question, ", ".join(label for v, label in options if v in picked) or "none")
+    return chosen
+
+
+def confirm(question: str, default: bool = True) -> bool:
+    if not INTERACTIVE:
+        raw = _ask_plain(f"{question} (y/n)", "y" if default else "n").lower()
+        return raw.startswith("y")
+    value = default
+    screen = _Screen()
+    with _Keys() as keys:
+        while True:
+            yes = _c("4;36", "Yes") if value else dim("Yes")
+            no = _c("4;36", "No") if not value else dim("No")
+            screen.draw([f"{cyan('?')} {bold(question)} {dim('›')} {no} {dim('/')} {yes}"])
+            key = keys.read()
+            if key in ("left", "right", "tab", "h", "l"):
+                value = not value
+            elif key == "y":
+                value = True
+                break
+            elif key == "n":
+                value = False
+                break
+            elif key == "enter":
+                break
+    screen.clear()
+    _done(question, "Yes" if value else "No")
+    return value
+
+
 def ask(question: str, default: str = "", required: bool = False, validate=None) -> str:
-    hint = f" [{default}]" if default else ""
+    if not INTERACTIVE:
+        return _ask_plain(question, default, required, validate)
     while True:
+        hint = f" {dim('(' + default + ')')}" if default else ""
         try:
-            value = input(f"  {question}{dim(hint)}: ").strip() or default
+            value = input(f"{cyan('?')} {bold(question)}{hint} {dim('›')} ").strip() or default
         except EOFError:
             print()
             sys.exit(1)
-        if required and not value:
-            print(red("    required"))
+        error = "required" if required and not value else (validate(value) if value and validate else "")
+        sys.stdout.write("\033[1F\033[J")  # replace the prompt line with the answer
+        if error:
+            print(red(f"✖ {question}: {error}"))
             continue
-        if value and validate:
-            error = validate(value)
-            if error:
-                print(red(f"    {error}"))
-                continue
+        _done(question, value or dim("skipped"))
         return value
 
 
 def ask_secret(question: str, current: str = "", required: bool = False) -> str:
     """Hidden input. Enter keeps the current value."""
-    hint = f" [keep …{current[-4:]}]" if current else ""
     while True:
-        value = getpass.getpass(f"  {question}{dim(hint)}: ").strip()
-        if not value and current:
-            return current
+        hint = f" {dim('(enter keeps …' + current[-4:] + ')')}" if current else ""
+        prompt = f"{cyan('?')} {bold(question)}{hint} {dim('›')} " if INTERACTIVE else f"  {question}{hint}: "
+        value = getpass.getpass(prompt).strip() or current
+        if INTERACTIVE:
+            sys.stdout.write("\033[1F\033[J")
         if required and not value:
-            print(red("    required"))
+            print(red(f"✖ {question}: required"))
             continue
+        if INTERACTIVE:
+            _done(question, ("•" * 8 + value[-4:]) if value else dim("skipped"))
         return value
 
 
-def choose(question: str, options: list[tuple[str, str]], default: str | None = None) -> str:
-    print(f"  {question}")
-    for i, (value, label) in enumerate(options, 1):
-        marker = green("›") if value == default else " "
-        print(f"   {marker} {i}) {label}")
-    default_index = next((str(i) for i, (v, _) in enumerate(options, 1) if v == default), "")
+# Numbered fallbacks (no terminal: CI, piped input, Windows).
+
+
+def _ask_plain(question: str, default: str = "", required: bool = False, validate=None) -> str:
+    hint = f" [{default}]" if default else ""
     while True:
-        raw = ask("Choose", default_index, required=True)
+        try:
+            value = input(f"  {question}{hint}: ").strip() or default
+        except EOFError:
+            print()
+            sys.exit(1)
+        if required and not value:
+            print("    required")
+            continue
+        if value and validate:
+            error = validate(value)
+            if error:
+                print(f"    {error}")
+                continue
+        return value
+
+
+def _choose_numbered(question: str, options: list[tuple[str, str]], default: str | None) -> str:
+    print(f"  {question}")
+    for i, (_, label) in enumerate(options, 1):
+        print(f"     {i}) {label}")
+    default_index = next((str(i) for i, (v, _) in enumerate(options, 1) if v == default), "1")
+    while True:
+        raw = _ask_plain("Choose", default_index, required=True)
         if raw.isdigit() and 1 <= int(raw) <= len(options):
             return options[int(raw) - 1][0]
-        print(red(f"    enter a number from 1 to {len(options)}"))
+        print(f"    enter a number from 1 to {len(options)}")
 
 
-def choose_many(question: str, options: list[tuple[str, str]], defaults: list[str]) -> list[str]:
+def _choose_many_numbered(question: str, options: list[tuple[str, str]], defaults: list[str]) -> list[str]:
     print(f"  {question}")
-    for i, (value, label) in enumerate(options, 1):
-        marker = green("●") if value in defaults else dim("○")
-        print(f"     {marker} {i}) {label}")
+    for i, (_, label) in enumerate(options, 1):
+        print(f"     {i}) {label}")
     default = ",".join(str(i) for i, (v, _) in enumerate(options, 1) if v in defaults)
     while True:
-        raw = ask("Numbers separated by commas, or 0 for none", default or "0")
+        raw = _ask_plain("Numbers separated by commas, or 0 for none", default or "0")
         if raw.strip() == "0":
             return []
         parts = [p.strip() for p in raw.split(",") if p.strip()]
         if all(p.isdigit() and 1 <= int(p) <= len(options) for p in parts):
             return [options[int(p) - 1][0] for p in parts]
-        print(red(f"    enter numbers from 1 to {len(options)}"))
-
-
-def confirm(question: str, default: bool = True) -> bool:
-    raw = ask(f"{question} (y/n)", "y" if default else "n").lower()
-    return raw.startswith("y")
+        print(f"    enter numbers from 1 to {len(options)}")
 
 
 def url_check(value: str) -> str:
@@ -318,11 +521,11 @@ def try_test(channel: str, label: str, s: dict[str, str]) -> None:
         return
     try:
         send_test(channel, s)
-        print(green(f"    ✓ {label} OK"))
+        print(green(f"✔ {label}: test message delivered"))
     except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
         detail = exc.read().decode(errors="replace")[:200] if isinstance(exc, urllib.error.HTTPError) else str(exc)
-        print(red(f"    ✗ {label} failed: {detail}"))
-        print(dim("      Settings are kept; fix them later with ./k8s-soar configure."))
+        print(red(f"✖ {label}: {detail}"))
+        print(dim("  Settings are kept; fix them later with ./k8s-soar configure."))
 
 
 # --- wizard --------------------------------------------------------------------------
@@ -353,15 +556,15 @@ def configure_channels(secrets: dict[str, str], profile: dict, total: int, n: in
     labels = dict(CHANNELS)
     for channel in chosen:
         print()
-        print(f"  {bold(labels[channel])}")
+        print(bold(labels[channel]))
         if channel == "slack":
-            print(dim("    api.slack.com/apps → your app → Incoming Webhooks → Add New Webhook"))
+            print(dim("api.slack.com/apps → your app → Incoming Webhooks → Add New Webhook"))
             secrets["SLACK_WEBHOOK_URL"] = ask_secret("Webhook URL", secrets.get("SLACK_WEBHOOK_URL", ""), True)
         elif channel == "teams":
-            print(dim("    Teams channel → Workflows → 'Post to a channel when a webhook request is received'"))
+            print(dim("Teams channel → Workflows → 'Post to a channel when a webhook request is received'"))
             secrets["TEAMS_WEBHOOK_URL"] = ask_secret("Workflow URL", secrets.get("TEAMS_WEBHOOK_URL", ""), True)
         elif channel == "google_chat":
-            print(dim("    Space → Apps & integrations → Webhooks → Add webhook"))
+            print(dim("Space → Apps & integrations → Webhooks → Add webhook"))
             secrets["GOOGLE_CHAT_WEBHOOK_URL"] = ask_secret(
                 "Webhook URL", secrets.get("GOOGLE_CHAT_WEBHOOK_URL", ""), True
             )
@@ -369,7 +572,7 @@ def configure_channels(secrets: dict[str, str], profile: dict, total: int, n: in
             secrets["WEBHOOK_URL"] = ask(
                 "URL that receives the case JSON", secrets.get("WEBHOOK_URL", ""), True, url_check
             )
-            print(dim("    Optional: a shared secret signs each request (header X-K8s-Soar-Signature)."))
+            print(dim("Optional: a shared secret signs each request (header X-K8s-Soar-Signature)."))
             secrets["WEBHOOK_SECRET"] = ask_secret("Signing secret (Enter to skip)", secrets.get("WEBHOOK_SECRET", ""))
         elif channel == "email":
             secrets["SMTP_HOST"] = ask("SMTP server", secrets.get("SMTP_HOST", ""), True)
@@ -387,7 +590,7 @@ def configure_channels(secrets: dict[str, str], profile: dict, total: int, n: in
             secrets["SMTP_FROM"] = ask("From address", secrets.get("SMTP_FROM", ""), True)
             secrets["SMTP_TO"] = ask("Recipients, comma-separated", secrets.get("SMTP_TO", ""), True)
         elif channel == "pagerduty":
-            print(dim("    Service → Integrations → Events API v2 → Integration Key"))
+            print(dim("Service → Integrations → Events API v2 → Integration Key"))
             secrets["PAGERDUTY_ROUTING_KEY"] = ask_secret(
                 "Integration key", secrets.get("PAGERDUTY_ROUTING_KEY", ""), True
             )
@@ -405,7 +608,7 @@ def configure_channels(secrets: dict[str, str], profile: dict, total: int, n: in
         elif channel == "jira":
             secrets["JIRA_URL"] = ask("Jira URL", secrets.get("JIRA_URL", ""), True, url_check)
             secrets["JIRA_EMAIL"] = ask("Account email", secrets.get("JIRA_EMAIL", ""), True)
-            print(dim("    id.atlassian.com/manage-profile/security/api-tokens"))
+            print(dim("id.atlassian.com/manage-profile/security/api-tokens"))
             secrets["JIRA_API_TOKEN"] = ask_secret("API token", secrets.get("JIRA_API_TOKEN", ""), True)
             secrets["JIRA_PROJECT_KEY"] = ask("Project key (e.g. SEC)", secrets.get("JIRA_PROJECT_KEY", ""), True)
         try_test(channel, labels[channel], secrets)
@@ -419,8 +622,9 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
     n = 0
     target = root_profile.get("setup", {}).get("cluster", "new")
 
-    print(bold("\nk8s-soar setup") + dim(f"   ({ROOT})"))
-    print(dim("Enter accepts the value in [brackets]. Nothing is applied until you confirm at the end."))
+    print()
+    print(bold("k8s-soar") + dim(f" · {'setup' if full else 'configure'} · {ROOT}"))
+    print(dim("Enter keeps the value shown in (parentheses). Nothing changes until you confirm at the end."))
 
     if full:
         n += 1
@@ -430,7 +634,7 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
         if ctx:
             options.append(("existing", f"Install on the cluster kubectl is connected to ({ctx})"))
         else:
-            print(dim("  No reachable cluster in your kubeconfig, so k8s-soar will create one."))
+            print(dim("No reachable cluster in your kubeconfig, so k8s-soar will create one."))
         target = choose("Where should k8s-soar run?", options, "existing" if ctx and target == "existing" else "new")
 
     response = profile.setdefault("response", {})
@@ -477,16 +681,17 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
     )
     for level in LEVELS:
         current = levels.setdefault(level, {"approval": "human", "action": "none"})
-        print()
-        print(f"  {bold(level.capitalize())} {dim('· ' + LEVEL_HELP[level])}")
+        print(dim(f"  {level}: {LEVEL_HELP[level]}"))
         current["approval"] = choose(
-            "Decision",
-            [("human", "Analyst approves (console)"), ("auto", "Automatic")],
+            f"{level.capitalize()} alerts",
+            [
+                ("human", "Analyst decides — case waits in the console"),
+                ("auto", "Automatic — k8s-soar acts on its own"),
+            ],
             current.get("approval", "human"),
         )
     autos = [lvl for lvl in LEVELS if levels[lvl]["approval"] == "auto"]
     if autos:
-        print()
         if ai_usable:
             decisions["strategy"] = choose(
                 "For automatic levels, who picks the action?",
@@ -498,7 +703,7 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
             )
         else:
             decisions["strategy"] = "policy"
-            print(dim("  No AI key configured, so automatic levels use a fixed action per level."))
+            print(dim("No AI key configured, so automatic levels use a fixed action per level."))
         if decisions["strategy"] == "ai":
             pct = ask(
                 "Minimum AI confidence to act, in %",
@@ -509,7 +714,7 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
         else:
             for level in autos:
                 levels[level]["action"] = choose(
-                    f"Automatic action for {level}",
+                    f"Automatic action for {level} alerts",
                     [
                         ("none", "Keep the pod quarantined for investigation"),
                         ("delete-pod", "Delete the pod (its controller runs a clean replacement)"),
@@ -572,53 +777,107 @@ def summary(root_profile: dict, secrets: dict[str, str], full: bool) -> None:
 # --- apply ---------------------------------------------------------------------------
 
 
-def run(cmd: list[str], env: dict[str, str] | None = None) -> None:
-    print(dim("  $ " + " ".join(cmd)))
-    result = subprocess.run(cmd, cwd=ROOT, env={**os.environ, **(env or {})})
-    if result.returncode != 0:
-        sys.exit(f"{red('failed')}: {' '.join(cmd)} (exit {result.returncode})")
+LOG_DIR = Path(os.environ.get("TMPDIR", "/tmp")) / "k8s-soar"
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+def task(title: str, cmd: list[str], env: dict[str, str] | None = None, stream: bool = False) -> None:
+    """Run one apply step. Quiet with a spinner; the full output goes to a log, shown on failure."""
+    full_env = {**os.environ, "NO_COLOR": "1", **(env or {})}
+    if stream:
+        print(dim(f"$ {' '.join(cmd)}"))
+        code = subprocess.run(cmd, cwd=ROOT, env={**os.environ, **(env or {})}).returncode
+        if code:
+            sys.exit(red(f"✖ {title} failed (exit {code})"))
+        print(f"{green('✔')} {title}")
+        return
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log = LOG_DIR / (title.lower().replace(" ", "-") + ".log")
+    started = time.monotonic()
+    with log.open("w") as out:
+        proc = subprocess.Popen(cmd, cwd=ROOT, env=full_env, stdout=out, stderr=subprocess.STDOUT)
+        frame = 0
+        while proc.poll() is None:
+            if INTERACTIVE:
+                sys.stdout.write(f"\r{cyan(SPINNER[frame % len(SPINNER)])} {title}{dim('…')}")
+                sys.stdout.flush()
+            frame += 1
+            time.sleep(0.1)
+    elapsed = f"{time.monotonic() - started:.0f}s"
+    if INTERACTIVE:
+        sys.stdout.write("\r\033[K")
+    if proc.returncode:
+        print(f"{red('✖')} {title} {dim(elapsed)}")
+        tail = log.read_text(errors="replace").splitlines()[-30:]
+        print("\n".join(dim("  " + line) for line in tail))
+        sys.exit(red(f"\nFull log: {log}"))
+    print(f"{green('✔')} {title} {dim(elapsed)}")
 
 
 def apply_existing(full: bool) -> None:
+    print()
     if full:
-        run(["./scripts/preflight.sh"])
-    run(["./scripts/secrets.sh"], {"SOAR_SECRETS_REPLACE": "true"})
-    run(["make", "deploy" if full else "deploy-soar"])
+        task("Checking prerequisites", ["./scripts/preflight.sh"])
+    task("Updating secrets", ["./scripts/secrets.sh"], {"SOAR_SECRETS_REPLACE": "true"})
+    if full:
+        task("Installing the stack (Cilium, Falco, Argo, Grafana, k8s-soar)", ["make", "deploy"])
+    else:
+        task("Applying settings to the cluster", ["make", "deploy-soar"])
+    # Pick up a new AI key; harmless when the agent is disabled.
     subprocess.run(
         ["kubectl", "rollout", "restart", "deploy/soar-agent", "-n", "k8s-soar"], cwd=ROOT, capture_output=True
     )
+
+
+def _save(root_profile: dict, secrets: dict[str, str]) -> None:
+    write_profile(root_profile)
+    write_secrets(secrets)
+    print(f"{green('✔')} Saved {LOCAL_PROFILE.relative_to(ROOT)} and {SECRETS_FILE.relative_to(ROOT)}")
+
+
+def _next_steps() -> None:
+    print()
+    print(dim("Try it:   make smoke-test   then   make console"))
+    print(dim("Change:   ./k8s-soar configure"))
 
 
 def cmd_setup(_: argparse.Namespace) -> None:
     require_tty()
     root_profile, secrets, target = wizard(full=True)
     summary(root_profile, secrets, full=True)
-    if not confirm("\nSave and install?", True):
+    print()
+    if not confirm("Save and install?", True):
         sys.exit("Nothing changed.")
-    write_profile(root_profile)
-    write_secrets(secrets)
-    print(green(f"\n✓ Saved {LOCAL_PROFILE.relative_to(ROOT)} and {SECRETS_FILE.relative_to(ROOT)}"))
+    _save(root_profile, secrets)
     if target == "new":
-        run(["deploy/ansible/setup.sh"], {"K8S_SOAR_SKIP_WIZARD": "1"})
+        task(
+            "Creating the cluster and installing k8s-soar",
+            ["deploy/ansible/setup.sh"],
+            {"K8S_SOAR_SKIP_WIZARD": "1"},
+            stream=True,
+        )
     else:
         apply_existing(full=True)
-    print(green("\n✓ k8s-soar is installed.") + " Next: make smoke-test ARGS=--keep, then make console")
+    print()
+    print(green(bold("k8s-soar is installed.")) + " Everything is applied; nothing else to run.")
+    _next_steps()
 
 
 def cmd_configure(_: argparse.Namespace) -> None:
     require_tty()
     root_profile, secrets, _ = wizard(full=False)
     summary(root_profile, secrets, full=False)
-    if not confirm("\nSave and apply to the cluster?", True):
+    print()
+    if not confirm("Save and apply to the cluster?", True):
         sys.exit("Nothing changed.")
-    write_profile(root_profile)
-    write_secrets(secrets)
-    print(green(f"\n✓ Saved {LOCAL_PROFILE.relative_to(ROOT)} and {SECRETS_FILE.relative_to(ROOT)}"))
+    _save(root_profile, secrets)
     if not cluster_reachable():
-        print(yellow("No reachable cluster: settings are saved and will be applied by ./k8s-soar setup."))
+        print(yellow("No reachable cluster: the settings are saved and ./k8s-soar setup will apply them."))
         return
     apply_existing(full=False)
-    print(green("\n✓ Applied."))
+    print()
+    print(green(bold("Done.")) + " The new settings are live; nothing else to run.")
+    _next_steps()
 
 
 def cmd_test_notify(_: argparse.Namespace) -> None:
@@ -630,10 +889,10 @@ def cmd_test_notify(_: argparse.Namespace) -> None:
     for channel, label in configured:
         try:
             send_test(channel, secrets)
-            print(green(f"✓ {label}"))
+            print(f"{green('✔')} {label}")
         except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
             failed = True
-            print(red(f"✗ {label}: {exc}"))
+            print(f"{red('✖')} {label}: {exc}")
     sys.exit(1 if failed else 0)
 
 
