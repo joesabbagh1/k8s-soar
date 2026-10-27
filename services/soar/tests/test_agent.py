@@ -96,3 +96,26 @@ def test_settings_model_string():
     assert AgentSettings(provider="ollama", model="llama3.1").litellm_model == "ollama/llama3.1"
     assert AgentSettings(provider="anthropic", model="anthropic/claude-x").litellm_model == "anthropic/claude-x"
     assert "api_key" not in AgentSettings(api_key="secret").public()
+
+
+def test_real_litellm_tool_call_imports(monkeypatch):
+    """The real litellm code path with tools, no network (mock_response).
+
+    Catches dependency breaks like litellm importing its MCP code (needs `mcp`) on
+    every tool-calling completion, which made every triage 'unavailable'.
+    """
+    import pytest
+
+    pytest.importorskip("litellm")
+    from k8s_soar.agent.tools import TOOL_SPECS
+    from k8s_soar.agent.triage import _default_completion
+
+    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    response = _default_completion(
+        model="anthropic/claude-sonnet-5-5",
+        messages=[{"role": "user", "content": "investigate"}],
+        tools=TOOL_SPECS,
+        api_key="test",
+        mock_response="ok",
+    )
+    assert response.choices[0].message.content == "ok"

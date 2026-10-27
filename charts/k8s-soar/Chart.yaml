@@ -6,8 +6,8 @@ description: >
   AI triage agent and Grafana dashboards. Third-party components (Cilium,
   Falco, Argo, ...) are installed by deploy/helmfile.yaml.gotmpl.
 type: application
-version: 0.4.0
-appVersion: "0.4.0"
+version: 0.4.1
+appVersion: "0.4.1"
 kubeVersion: ">=1.28.0-0"
 keywords: [security, soar, falco, tetragon, kyverno, cilium, argo, ai]
 maintainers:
