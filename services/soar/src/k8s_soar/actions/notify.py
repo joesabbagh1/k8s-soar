@@ -6,13 +6,12 @@ fields (Slack mrkdwn is escaped), never evaluated.
 
 from __future__ import annotations
 
-import json
 import logging
-import urllib.parse
 from typing import Any
 
 import httpx
 
+from k8s_soar import grafana
 from k8s_soar.alert import Alert
 from k8s_soar.config import Settings
 from k8s_soar.verdict import Verdict
@@ -37,15 +36,10 @@ def links(alert: Alert, settings: Settings, workflow: str) -> dict[str, str]:
     if settings.argo_external_url and workflow:
         out["Argo case"] = f"{settings.argo_external_url.rstrip('/')}/workflows/k8s-soar/{workflow}"
     if settings.grafana_external_url:
-        target = json.dumps(alert.pod) if alert.pod else '"k8s-soar"'
-        state = {
-            "datasource": "loki",
-            "queries": [{"refId": "A", "expr": f'{{namespace="falco"}} |= {target}'}],
-            "range": {"from": "now-1h", "to": "now"},
-        }
-        base = settings.grafana_external_url.rstrip("/")
-        out["Grafana logs"] = f"{base}/explore?orgId=1&left={urllib.parse.quote(json.dumps(state), safe='')}"
-        out["Dashboard"] = f"{base}/d/k8s-soar-findings"
+        base = settings.grafana_external_url
+        expr = f'{{namespace="falco"}} |= {grafana.logql_string(alert.pod or "K8sSoar")}'
+        out["Grafana logs"] = grafana.explore_url(base, expr, alert.time)
+        out["Dashboard"] = grafana.dashboard_url(base, "k8s-soar-findings", alert.time)
     return out
 
 
