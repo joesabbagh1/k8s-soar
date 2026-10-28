@@ -726,6 +726,23 @@ def from_workflow(wf: dict[str, Any]) -> Case:
 GROUP_WINDOW = timedelta(minutes=15)
 
 
+def _container_id(case: Case) -> str:
+    return str(case.alert.fields.get("container.id") or "") if case.alert else ""
+
+
+def _same_incident(group: list[Case], case: Case) -> bool:
+    """Same pod, close in time, and not provably a different container.
+
+    A pod re-created under the same name (a re-run, a restart) has a new container id and
+    is a new incident. Cases from rules that don't report a container id match any group.
+    """
+    if case.created - group[-1].created > GROUP_WINDOW:
+        return False
+    seen = {_container_id(c) for c in group} - {""}
+    cid = _container_id(case)
+    return not cid or not seen or cid in seen
+
+
 def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
     """One case per pod: alerts on the same pod close together are grouped.
 
@@ -747,12 +764,13 @@ def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[st
     attached: set[str] = set()
     for items in by_workload.values():
         items.sort(key=lambda c: c.created)
-        groups = [[items[0]]]
-        for case in items[1:]:
-            if case.created - groups[-1][-1].created <= GROUP_WINDOW:
-                groups[-1].append(case)
-            else:
+        groups: list[list[Case]] = []
+        for case in items:
+            home = next((g for g in reversed(groups) if _same_incident(g, case)), None)
+            if home is None:
                 groups.append([case])
+            else:
+                home.append(case)
         for group in groups:
             if len(group) < 2:
                 continue

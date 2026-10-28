@@ -9,7 +9,7 @@
   output: >
     Container escape tooling executed
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname user=%user.name
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     privileged=%container.privileged
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
@@ -24,7 +24,7 @@
   output: >
     Process started in a privileged container
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname user=%user.name
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
   tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
@@ -38,7 +38,7 @@
   output: >
     Host IPC table read
     (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_privilege_escalation, T1611]
@@ -51,7 +51,7 @@
   output: >
     File written below binary directory
     (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: ERROR
   tags: [k8s-soar, soar_notify, mitre_persistence, mitre_defense_evasion, T1036]

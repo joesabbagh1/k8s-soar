@@ -6,7 +6,7 @@
   output: >
     Network tool executed in container
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1046]
@@ -19,7 +19,7 @@
   output: >
     Kubernetes client executed in container
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
@@ -40,7 +40,7 @@
   output: >
     Shell tool connected to a private address (lateral movement)
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname connection=%fd.name
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
   tags: [k8s-soar, soar_contain, mitre_lateral_movement, T1021]
@@ -56,7 +56,7 @@
   output: >
     Directory listing from a shell
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1083]
@@ -70,7 +70,7 @@
   output: >
     Process listing from a shell
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1057]
@@ -87,7 +87,7 @@
   output: >
     Account discovery in container
     (proc=%proc.name cmdline=%proc.cmdline file=%fd.name parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1087]
@@ -101,7 +101,7 @@
   output: >
     System information discovery
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1082]
@@ -116,7 +116,7 @@
   output: >
     Container identity files read
     (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
@@ -130,7 +130,7 @@
   output: >
     Kubelet port probed
     (proc=%proc.name cmdline=%proc.cmdline connection=%fd.name parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: ERROR
   tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
@@ -143,7 +143,7 @@
   output: >
     Process started from a :latest image
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_defense_evasion, T1525]
@@ -158,7 +158,7 @@
   output: >
     API server queried with shell tool
     (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
-    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: ERROR
   tags: [k8s-soar, soar_notify, mitre_discovery, T1613]

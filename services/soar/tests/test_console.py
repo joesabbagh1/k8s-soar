@@ -406,9 +406,21 @@ def test_skipped_alerts_attach_to_the_open_case(client):
 # --- one case per pod -----------------------------------------------------------------------------
 
 
-def member(name, rule, minutes_after=0, contained=False, approve="Running", pod="web-5d9c-abcde", phase="Running"):
+def member(
+    name,
+    rule,
+    minutes_after=0,
+    contained=False,
+    approve="Running",
+    pod="web-5d9c-abcde",
+    phase="Running",
+    container_id=None,
+):
     """A case on the same pod as the default fixture, for another rule."""
-    alert = dict(FIXTURE, rule=rule, output_fields=dict(FIXTURE["output_fields"], **{"k8s.pod.name": pod}))
+    fields = dict(FIXTURE["output_fields"], **{"k8s.pod.name": pod})
+    if container_id:
+        fields["container.id"] = container_id
+    alert = dict(FIXTURE, rule=rule, output_fields=fields)
     wf = workflow(alert=alert, approve=approve, phase=phase, name=name)
     wf["metadata"]["creationTimestamp"] = f"2026-10-26T10:{minutes_after:02d}:00Z"
     if not contained:
@@ -481,3 +493,25 @@ def test_headline_is_short_for_falco_stock_rules(client):
     assert ours.headline == "Reverse shell: stdio redirected to network socket"
     long = dict(FIXTURE, output="10:00:00.1: Critical " + "word " * 80)
     assert len(cases.from_workflow(workflow(alert=long)).headline) <= 140
+
+
+def test_a_recreated_pod_with_the_same_name_is_a_new_incident():
+    first = member("run-1", "K8sSoar Crypto Miner Execution", 0, contained=True, container_id="aaa111")
+    second = member(
+        "run-2",
+        "K8sSoar Crypto Miner Execution",
+        5,
+        contained=True,
+        container_id="bbb222",
+        approve=None,
+        phase="Running",
+    )
+    assert cases.attach_related([cases.from_workflow(w) for w in (first, second)]) == ({}, set())
+
+
+def test_same_container_and_rules_without_a_container_id_still_group():
+    a = member("ours", "K8sSoar Crypto Miner Execution", 0, contained=True, container_id="aaa111")
+    b = member("stock", "Drop and execute new binary in container", 1, container_id="aaa111")
+    c = member("old-rule", "K8sSoar Process Discovery", 2)  # no container id: matches any group
+    related, attached = cases.attach_related([cases.from_workflow(w) for w in (a, b, c)])
+    assert list(related) == ["ours"] and attached == {"stock", "old-rule"}
