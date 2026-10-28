@@ -200,9 +200,10 @@
 
   {% if related %}
   <details class="card fold" open data-fold="related">
-    <summary><span>More activity on this pod</span><span class="faint">{{ related | length }} later alert{{ "s" if related | length > 1 }}</span></summary>
+    <summary><span>Also detected on this pod</span><span class="faint">{{ related | length }} more alert{{ "s" if related | length > 1 }}</span></summary>
     <section style="padding-top:12px;padding-bottom:12px">
-      <div class="muted" style="margin-bottom:8px;font-size:13px">These fired after this case opened. They didn't open new cases because the pod was already handled here; activity inside a quarantined pod is worth a look.</div>
+      <div class="muted" style="margin-bottom:8px;font-size:13px">Other rules that fired on this pod around the same time are part of this case.
+        {% if case.awaiting %}Your decision above also closes the ones still waiting.{% endif %}</div>
       <table>
         <tbody>{% for r in related %}
           <tr>
@@ -210,6 +211,7 @@
             <td><a href="/cases/{{ r.name }}" style="color:var(--strong);font-weight:600">{{ r.title }}</a>
               <div class="muted" style="font-size:13px">{{ r.headline }}</div>
               {% if r.alert and r.alert.fields.get("proc.cmdline") %}<div style="margin-top:4px"><code>{{ r.alert.fields["proc.cmdline"] }}</code></div>{% endif %}</td>
+            <td style="white-space:nowrap"><span class="status {{ r.status }}">{{ r.status_label }}</span></td>
             <td class="faint mono" style="text-align:right;white-space:nowrap;font-size:12px">{% if a and r.alert %}{{ offset(r.alert.time, a.time) }}{% endif %}</td>
           </tr>
         {% endfor %}</tbody>

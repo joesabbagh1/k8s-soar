@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from k8s_soar.alert import Alert, parse
@@ -107,6 +107,7 @@ VERDICT_EXPLAINED = {
 }
 VERDICT_TONE = {"true_positive": "bad", "benign": "good", "needs_review": "warn"}
 
+_BARE_FIELD = re.compile(r"\s[\w.]+=")
 _FALCO_PREFIX = re.compile(r"^\S+:\s+(Emergency|Alert|Critical|Error|Warning|Notice|Informational|Debug)\s+", re.I)
 
 
@@ -376,7 +377,13 @@ class Case:
         if not self.alert or not self.alert.output:
             return ""
         text = _FALCO_PREFIX.sub("", self.alert.output.strip())
-        return text.split(" (", 1)[0].strip()
+        # Our rules read "Sentence (field=value ...)"; Falco's own rules read "Sentence | field=value ...".
+        text = text.split(" | ", 1)[0].split(" (", 1)[0]
+        bare_field = _BARE_FIELD.search(text)
+        if bare_field:
+            text = text[: bare_field.start()]
+        text = text.strip()
+        return text if len(text) <= 140 else text[:139].rstrip() + "…"
 
     @property
     def severity(self) -> str:
@@ -716,28 +723,49 @@ def from_workflow(wf: dict[str, Any]) -> Case:
     )
 
 
-def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
-    """Alerts skipped because their pod already had a case belong to that case.
+GROUP_WINDOW = timedelta(minutes=15)
 
-    Returns {parent case name: [related cases, oldest first]} and the names of the
-    attached cases (hidden from the case list; they are shown on their parent).
+
+def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
+    """One case per pod: alerts on the same pod close together are grouped.
+
+    A pod under attack usually trips several rules (ours and Falco's own) within seconds,
+    and each opens a case. Cases on the same workload no more than GROUP_WINDOW apart form
+    a group. Its primary is the case that quarantined the pod, else the first one that
+    was handled; the others are shown on it as "also detected".
+
+    Returns {primary case name: [other cases, oldest first]} and the names of the grouped
+    cases (hidden from the case list). A case still waiting for a decision stays listed
+    unless its primary also waits: that decision will close it, otherwise it would sit
+    unseen at its approval gate.
     """
     by_workload: dict[str, list[Case]] = {}
     for case in all_cases:
-        by_workload.setdefault(case.workload, []).append(case)
+        if case.alert and case.alert.pod and case.created:
+            by_workload.setdefault(case.workload, []).append(case)
     related: dict[str, list[Case]] = {}
     attached: set[str] = set()
-    for case in all_cases:
-        if case.status != SKIPPED or not case.alert or not case.alert.pod or not case.created:
-            continue
-        parents = [
-            p for p in by_workload[case.workload] if p.status != SKIPPED and p.created and p.created <= case.created
-        ]
-        if not parents:
-            continue
-        parent = max(parents, key=lambda p: p.created)
-        related.setdefault(parent.name, []).append(case)
-        attached.add(case.name)
+    for items in by_workload.values():
+        items.sort(key=lambda c: c.created)
+        groups = [[items[0]]]
+        for case in items[1:]:
+            if case.created - groups[-1][-1].created <= GROUP_WINDOW:
+                groups[-1].append(case)
+            else:
+                groups.append([case])
+        for group in groups:
+            if len(group) < 2:
+                continue
+            primary = (
+                next((c for c in group if c.contained), None)
+                or next((c for c in group if c.status != SKIPPED), None)
+                or group[0]
+            )
+            for case in group:
+                if case is primary or (case.awaiting and not primary.awaiting):
+                    continue
+                related.setdefault(primary.name, []).append(case)
+                attached.add(case.name)
     for items in related.values():
         items.sort(key=lambda c: c.created)
     return related, attached

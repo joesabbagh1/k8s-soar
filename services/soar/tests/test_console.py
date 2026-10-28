@@ -207,7 +207,13 @@ class FakeArgo:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(server, "console_settings", lambda: ConsoleSettings())
-    fake = FakeArgo([workflow(), workflow(approve="Succeeded", act="Succeeded", phase="Succeeded", name="old-case")])
+    other_pod = dict(FIXTURE, output_fields=dict(FIXTURE["output_fields"], **{"k8s.pod.name": "web-old-1"}))
+    fake = FakeArgo(
+        [
+            workflow(),
+            workflow(alert=other_pod, approve="Succeeded", act="Succeeded", phase="Succeeded", name="old-case"),
+        ]
+    )
     server.app.state.argo = fake
     server._CACHE.clear()
     yield TestClient(server.app), fake
@@ -394,4 +400,84 @@ def test_skipped_alerts_attach_to_the_open_case(client):
     assert "k8ssoar-api-server-access-q1" not in listed  # not its own row
     assert "+1 more alert" in listed
     page = http.get("/cases/k8ssoar-reverse-shell-abcde").text
-    assert "More activity on this pod" in page and "k8ssoar-api-server-access-q1" in page
+    assert "Also detected on this pod" in page and "k8ssoar-api-server-access-q1" in page
+
+
+# --- one case per pod -----------------------------------------------------------------------------
+
+
+def member(name, rule, minutes_after=0, contained=False, approve="Running", pod="web-5d9c-abcde", phase="Running"):
+    """A case on the same pod as the default fixture, for another rule."""
+    alert = dict(FIXTURE, rule=rule, output_fields=dict(FIXTURE["output_fields"], **{"k8s.pod.name": pod}))
+    wf = workflow(alert=alert, approve=approve, phase=phase, name=name)
+    wf["metadata"]["creationTimestamp"] = f"2026-10-26T10:{minutes_after:02d}:00Z"
+    if not contained:
+        wf["status"]["nodes"]["c"]["outputs"]["parameters"][0]["value"] = json.dumps(
+            {"skipped": "not a containment rule"}
+        )
+    return wf
+
+
+def test_alerts_on_one_pod_become_one_case():
+    primary = member("quarantine-case", "K8sSoar Crypto Miner Execution", 1, contained=True)
+    earlier = member("stock-rule-case", "Drop and execute new binary in container", 0)
+    later = member("later-case", "K8sSoar Process Discovery", 3, approve="Succeeded", phase="Succeeded")
+    cs = [cases.from_workflow(w) for w in (earlier, primary, later)]
+    related, attached = cases.attach_related(cs)
+    assert list(related) == ["quarantine-case"]  # the case that quarantined the pod is the primary
+    assert [c.name for c in related["quarantine-case"]] == ["stock-rule-case", "later-case"]
+    assert attached == {"stock-rule-case", "later-case"}
+
+
+def test_cases_far_apart_or_on_other_pods_stay_separate():
+    a = member("a", "K8sSoar Crypto Miner Execution", 0, contained=True)
+    b = member("b", "K8sSoar Crypto Miner Execution", 40, contained=True)  # outside the 15 minute window
+    c = member("c", "K8sSoar Crypto Miner Execution", 1, contained=True, pod="web-other-1")
+    assert cases.attach_related([cases.from_workflow(w) for w in (a, b, c)]) == ({}, set())
+
+
+def test_a_waiting_case_stays_visible_when_its_primary_is_not_waiting():
+    primary = member(
+        "closed-primary", "K8sSoar Crypto Miner Execution", 0, contained=True, approve="Succeeded", phase="Succeeded"
+    )
+    waiting = member("still-waiting", "K8sSoar Process Discovery", 1)
+    related, attached = cases.attach_related([cases.from_workflow(w) for w in (primary, waiting)])
+    assert attached == set() and related == {}  # otherwise nobody could ever decide it
+
+
+def test_one_decision_closes_the_grouped_cases(client):
+    http, fake = client
+    fake.workflows.clear()
+    for wf in (
+        member("quarantine-case", "K8sSoar Crypto Miner Execution", 1, contained=True),
+        member("stock-rule-case", "Drop and execute new binary in container", 0),
+    ):
+        fake.workflows[wf["metadata"]["name"]] = wf
+    assert http.get("/").text.count("/cases/stock-rule-case") == 0  # one row, not two
+    resp = http.post(
+        "/cases/quarantine-case/decide",
+        data={"action": "none", "analyst": "alice", "comment": "ok"},
+        headers={"origin": "http://testserver"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert [(n, a) for n, a, _ in fake.decisions] == [("quarantine-case", "none"), ("stock-rule-case", "none")]
+    assert (
+        "closed with the decision on quarantine-case"
+        in fake.workflows["stock-rule-case"]["metadata"]["annotations"][cases.ANN_NOTE]
+    )
+
+
+def test_headline_is_short_for_falco_stock_rules(client):
+    noisy = dict(
+        FIXTURE,
+        rule="Drop and execute new binary in container",
+        output="10:00:00.1: Critical Executing binary not part of base image | proc_exe=/tmp/xmrig proc_sname=sh "
+        "gparent=containerd-shim proc_exe_ino_ctime=1793198821586334020 evt_type=execve user=root",
+    )
+    case = cases.from_workflow(workflow(alert=noisy))
+    assert case.headline == "Executing binary not part of base image"
+    ours = cases.from_workflow(workflow())
+    assert ours.headline == "Reverse shell: stdio redirected to network socket"
+    long = dict(FIXTURE, output="10:00:00.1: Critical " + "word " * 80)
+    assert len(cases.from_workflow(workflow(alert=long)).headline) <= 140

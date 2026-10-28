@@ -96,7 +96,9 @@ def _load_cases_cached(max_age: float = 2.0) -> list[cases.Case]:
 
 def _awaiting_count() -> int:
     try:
-        return sum(1 for c in _load_cases_cached() if c.awaiting)
+        all_cases = _load_cases_cached()
+        attached = cases.attach_related(all_cases)[1]
+        return sum(1 for c in all_cases if c.awaiting and c.name not in attached)
     except ArgoError:
         return 0
 
@@ -191,6 +193,32 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
     )
 
 
+def _close_grouped(primary: str, who: str, action: str, comment: str) -> None:
+    """One decision per pod: other cases grouped under this one that still wait are closed
+    without a second action (the primary's action already applies to the pod)."""
+    try:
+        group = cases.attach_related(_load_cases())[0].get(primary, [])
+    except ArgoError:
+        return
+    for other in group:
+        if not other.awaiting:
+            continue
+        try:
+            argo().annotate(
+                other.name,
+                {
+                    cases.ANN_BY: who,
+                    cases.ANN_AT: datetime.now(UTC).isoformat(timespec="seconds"),
+                    cases.ANN_NOTE: f"closed with the decision on {primary} ({action})"
+                    + (f": {comment}" if comment else ""),
+                },
+            )
+            argo().decide(other.name, "none", f"closed with the decision on {primary}")
+        except Exception:  # noqa: BLE001 - the primary decision already went through
+            log.exception("could not close grouped case %s", other.name)
+    _CACHE.clear()
+
+
 @app.post("/cases/{name}/decide")
 def decide(
     request: Request,
@@ -229,6 +257,7 @@ def decide(
         _CACHE.clear()
     except ArgoError as exc:
         raise HTTPException(502, str(exc)) from exc
+    _close_grouped(name, who, action, comment)
     audit.info(
         json.dumps(
             {
