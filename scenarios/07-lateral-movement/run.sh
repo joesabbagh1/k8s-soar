@@ -114,11 +114,17 @@ wait_for 90 "quarantine label on ${ATTACKER}" \
 pass "pod labelled security.quarantine=true"
 
 step "4. Network isolation"
-sleep 5
-if kubectl exec -n "$SCENARIO_NS" "$ATTACKER" -- wget -q -T 3 -O /dev/null "http://${PEER_IP}/" 2>/dev/null; then
-  fail "quarantined pod can still reach ${PEER_IP}"
-fi
-pass "egress blocked (${PEER_IP} unreachable from the quarantined pod)"
+# Cilium programs the new identity a few seconds after the label lands.
+blocked=false
+for _ in $(seq 12); do
+  if ! kubectl exec -n "$SCENARIO_NS" "$ATTACKER" -- wget -q -T 3 -O /dev/null "http://${PEER_IP}/" 2>/dev/null; then
+    blocked=true
+    break
+  fi
+  sleep 2
+done
+[[ "$blocked" == true ]] && pass "egress blocked (${PEER_IP} unreachable from the quarantined pod)" \
+  || fail "quarantined pod can still reach ${PEER_IP} (reload the policy with: make deploy-soar)"
 
 echo
 phase=$(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase}')
