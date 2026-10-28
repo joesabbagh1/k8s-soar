@@ -1,4 +1,4 @@
-# Lab profile: target namespace for the k8s-soar-scenarios repository.
+# Lab profile: target namespace for the scenarios/ attack simulations.
 k8sSoar:
   lab:
     enabled: true

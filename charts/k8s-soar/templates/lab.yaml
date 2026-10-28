@@ -1,5 +1,5 @@
 {{- if .Values.lab.enabled }}
-# Target namespace for the k8s-soar-scenarios attack simulations.
+# Target namespace for the scenarios/ attack simulations.
 apiVersion: v1
 kind: Namespace
 metadata:

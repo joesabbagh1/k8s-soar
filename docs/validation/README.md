@@ -8,7 +8,7 @@
 | Bootstrap cluster + stack | `cd deploy/ansible && ./setup.sh` (or `make deploy` on an existing cluster) |
 | Verify components | `make status` |
 | End-to-end check | `make smoke-test` |
-| Run scenarios (manual) | k8s-soar-scenarios repository, with `make deploy ENV=lab` |
+| Run one attack | `make deploy ENV=lab`, then `make <attack>` (see `make help`) |
 
 ## Checklist
 
@@ -16,7 +16,7 @@
 2. Install (see above), starting with `k8sSoar.response.mode: dry-run` on a real cluster
 3. `make status` — every hop of detection → response must be green
 4. `make smoke-test` — confirms alert → case → quarantine → isolation → replacement
-5. Run scenarios **one at a time**; collect evidence with `scripts/lab/capture-scenario-evidence.sh`
+5. Run attacks **one at a time** with `make <attack>` (for example `make shell-in-container`); collect evidence with `scripts/lab/capture-scenario-evidence.sh`
 6. Record baseline noise in `evidence/baseline/` using the template, tune, then switch to `contain`
 
 ## Baseline noise collection

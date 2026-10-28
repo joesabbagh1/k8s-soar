@@ -102,6 +102,7 @@ charts/k8s-soar/        k8s-soar's own resources
   templates/console/    analyst console
   templates/agent/      AI triage agent
 services/soar/          Python: workflow steps (soar-actions), console (soar-console), AI agent (soar-agent)
+scenarios/              attack simulations (`make <attack>` after `make deploy ENV=lab`)
 scripts/                verify, smoke test, secrets, preflight, lab helpers
 docs/                   architecture, detection catalog, response, AI agent, operations
 ```
@@ -118,7 +119,7 @@ docs/                   architecture, detection catalog, response, AI agent, ope
 | [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
 | [Thesis](docs/thesis/) | methodology, reproducibility, limitations |
 
-Attack scenarios live in the separate `k8s-soar-scenarios` repository (`make deploy ENV=lab` prepares the target namespace).
+Attack scenarios live in `scenarios/`. `make deploy ENV=lab` prepares the target namespace, then `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
 
 ## License
 

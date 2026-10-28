@@ -65,4 +65,4 @@ Alertmanager ──────────────► soar-webhook EventSou
 | `falco` | Falco DaemonSet, falcosidekick, `k8s-soar-falco-rules` ConfigMap |
 | `kyverno` | Kyverno controllers |
 | `monitoring` | Prometheus, Alertmanager, Grafana, Loki, Promtail, k8s-soar dashboards |
-| `security-lab` | Lab profile only: target for k8s-soar-scenarios |
+| `security-lab` | Lab profile only: target for `scenarios/` |

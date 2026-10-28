@@ -2,7 +2,7 @@
 
 ## Threat modeling
 
-1. Map 8 scenarios to MITRE ATT&CK (Containers) — see [detection-catalog.md](../detection-catalog.md) and the k8s-soar-scenarios repository.
+1. Map 8 scenarios to MITRE ATT&CK (Containers) — see [detection-catalog.md](../detection-catalog.md) and [scenarios/threat-matrix.md](../../scenarios/threat-matrix.md).
 2. Assign each scenario to Kyverno (prevent), Falco (detect), Tetragon/Cilium (enforce/isolate).
 3. Define expected evidence per tool before running simulations.
 
@@ -16,14 +16,13 @@
 ## Simulation procedure
 
 1. Install the stack: `cd deploy/ansible && ./setup.sh` with `k8s_soar_env: lab`, or `make deploy ENV=lab`
-2. Run scenarios
-3. Run the scenario from the k8s-soar-scenarios repository
-4. Capture logs within 2 minutes:
+2. Run one attack: `make <attack>` (for example `make shell-in-container`; `make help` lists them)
+3. Capture logs within 2 minutes:
    - `kubectl logs -n falco ...`
    - `kubectl get policyreport -A`
    - `kubectl exec -n kube-system ds/tetragon -c tetragon -- tetra getevents -o compact`
    - `scripts/lab/capture-scenario-evidence.sh` and `make cases`
-5. Record PASS/FAIL in evidence folder
+4. Record PASS/FAIL in evidence folder
 
 ## Policy rollout
 

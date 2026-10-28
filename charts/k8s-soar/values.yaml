@@ -25,7 +25,7 @@ trustedNamespaces:
   - k8s-soar
   - local-path-storage
 
-# Lab profile: creates a namespace for the k8s-soar-scenarios attack simulations.
+# Lab profile: creates a namespace for the scenarios/ attack simulations.
 lab:
   enabled: false
   namespace: security-lab

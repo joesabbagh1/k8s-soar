@@ -94,6 +94,31 @@ grafana-password: ## Print the Grafana admin password
 smoke-test: ## End-to-end test: trigger a rule and check containment (ARGS=--keep keeps the test pod)
 	./scripts/smoke-test.sh $(ARGS)
 
+# Attack scenarios live in scenarios/<id>-<name>/run.sh.
+# `make <name>` runs one (same shape as smoke-test). The numbered directory
+# name is an alias: `make shell-in-container` and `make 01-shell-in-container`.
+# `make deploy ENV=lab` creates the security-lab namespace first.
+SCENARIO_DIRS := $(patsubst scenarios/%/run.sh,%,$(wildcard scenarios/*/run.sh))
+scenario_slug = $(patsubst $(firstword $(subst -, ,$(1)))-%,%,$(1))
+
+define scenario_rule
+.PHONY: $(call scenario_slug,$(1))
+$(call scenario_slug,$(1)):
+	./scenarios/$(1)/run.sh $$(ARGS)
+ifneq ($(1),$(call scenario_slug,$(1)))
+.PHONY: $(1)
+$(1): $(call scenario_slug,$(1))
+endif
+endef
+
+$(foreach dir,$(SCENARIO_DIRS),$(eval $(call scenario_rule,$(dir))))
+
+scenario-reset:
+	./scripts/lab/reset-scenario-lab.sh
+
+scenarios-all:
+	./scenarios/run-all.sh
+
 ##@ Develop
 venv: $(PY)/pytest ## Create the Python dev environment
 $(PY)/pytest:
@@ -123,6 +148,14 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target> [ENV=default|lab]\n"} \
 	  /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } \
 	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
+	@printf "\n\033[1mScenarios\033[0m  (make deploy ENV=lab first; make <attack> runs one, like smoke-test)\n"
+	@for dir in scenarios/[0-9][0-9]-*/run.sh; do \
+	  name=$$(basename "$$(dirname "$$dir")"); \
+	  slug=$${name#[0-9][0-9]-}; \
+	  printf "  \033[36m%-32s\033[0m %s\n" "$$slug" "$$name"; \
+	done
+	@printf "  \033[36m%-32s\033[0m %s\n" "scenario-reset" "delete scenario pods and clear victim quarantine"
+	@printf "  \033[36m%-32s\033[0m %s\n" "scenarios-all" "run every attack in sequence"
 
 .PHONY: setup configure update dev dev-off test-notify bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
-	argo-ui console grafana grafana-password smoke-test venv test lint images push help
+	argo-ui console grafana grafana-password smoke-test scenario-reset scenarios-all venv test lint images push help
