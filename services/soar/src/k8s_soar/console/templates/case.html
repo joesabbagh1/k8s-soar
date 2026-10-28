@@ -50,7 +50,6 @@
 .steps li.done:not(:last-child)::before { background: color-mix(in srgb, var(--ok) 35%, var(--line)); }
 .dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-strong); }
 .done .dot { border-color: var(--ok); background: var(--ok); color: #fff; }
-.done.bad .dot { border-color: var(--crit); background: var(--crit); }
 .failed .dot { border-color: var(--crit); background: var(--crit); color: #fff; }
 .waiting .dot { border-color: var(--warn); background: var(--warn-bg); }
 .running .dot { border: 0; }
@@ -69,14 +68,7 @@
 .link-row .go { grid-row: span 3; align-self: center; color: var(--accent); font-weight: 500; }
 .link-row code { width: fit-content; max-width: 100%; margin-top: 4px; }
 .flags { display: flex; gap: 6px; flex-wrap: wrap; }
-.fold > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  padding: 16px 20px; cursor: pointer; color: var(--strong); font-weight: 600; font-size: 13px; }
-.fold > summary::-webkit-details-marker { display: none; }
-.fold > summary > span:first-child::before { content: "›"; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s; }
-.fold[open] > summary > span:first-child::before { transform: rotate(90deg); }
-.fold[open] > summary { border-bottom: 1px solid var(--line); }
-.fold > summary:hover { background: var(--hover); border-radius: 12px; }
-.fold[open] > summary:hover { border-radius: 12px 12px 0 0; }
+
 </style>
 
 {% if decided %}<div class="notice">Decision recorded. The response continues; this page updates on its own.</div>{% endif %}
@@ -166,24 +158,28 @@
   <button type="button" data-tab="technical">Technical</button>
 </nav>
 
+<div class="panels">
 {# ---- Overview ---- #}
 <div data-panel="overview" class="stack">
   <div class="grid2">
-    <div class="card"><section>
-      <h2>What happened</h2>
-      {% if a and a.fields.get("proc.cmdline") %}{{ codeblock("cmd", "Command line", a.fields["proc.cmdline"]) }}{% endif %}
-      <dl class="kv" style="margin-top:16px">
-        {% for label, value in case.key_fields if label != "Command line" %}<dt>{{ label }}</dt><dd><code>{{ value }}</code></dd>{% endfor %}
-        {% if a and a.hostname %}<dt>Node</dt><dd><code>{{ a.hostname }}</code></dd>{% endif %}
-        {% if a %}<dt>Rule</dt><dd>{{ a.rule }}</dd>{% endif %}
-      </dl>
-    </section></div>
+    <details class="card fold" open data-fold="happened">
+      <summary><span>What happened</span>{% if a %}<span class="faint">{{ a.fields.get("proc.name", "") }}</span>{% endif %}</summary>
+      <section>
+        {% if a and a.fields.get("proc.cmdline") %}{{ codeblock("cmd", "Command line", a.fields["proc.cmdline"]) }}{% endif %}
+        <dl class="kv" style="margin-top:16px">
+          {% for label, value in case.key_fields if label != "Command line" %}<dt>{{ label }}</dt><dd><code>{{ value }}</code></dd>{% endfor %}
+          {% if a and a.hostname %}<dt>Node</dt><dd><code>{{ a.hostname }}</code></dd>{% endif %}
+          {% if a %}<dt>Rule</dt><dd>{{ a.rule }}</dd>{% endif %}
+        </dl>
+      </section>
+    </details>
 
-    <div class="card" id="ai" data-live><section>
-      <h2>AI assessment</h2>
-      {% if not v %}<div class="muted">{% if case.status == "in_progress" %}Running…{% else %}Not run.{% endif %}</div>
-      {% elif v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
-      {% else %}
+    {% set tri = case.progress | selectattr("key", "equalto", "triage") | first %}
+    <details class="card fold" open data-fold="ai" id="ai" data-live>
+      <summary><span>AI assessment</span>{% if v and v.verdict != "unavailable" %}<span class="v-{{ verdict_tone(v.verdict) }}">{{ verdict_label(v.verdict) }}</span>{% endif %}</summary>
+      <section>
+      {% if v and v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
+      {% elif v %}
         <div style="display:flex;justify-content:space-between;align-items:baseline">
           <span class="v-{{ verdict_tone(v.verdict) }}" style="font-size:17px;font-weight:650">{{ verdict_label(v.verdict) }}</span>
           <span class="muted">{{ (v.confidence * 100)|round|int }}% sure</span>
@@ -194,15 +190,21 @@
         {% if v.evidence %}<ul class="muted" style="margin:10px 0 0;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
         {% if v.rationale %}<details style="margin-top:10px"><summary>Reasoning</summary><p class="muted" style="margin:6px 0 0">{{ v.rationale }}</p></details>{% endif %}
         <div class="faint" style="font-size:12px;margin-top:12px">{{ v.model or "AI" }} · advisory</div>
-      {% endif %}
-    </section></div>
+      {% elif tri and tri.state == "running" %}
+        <div style="display:flex;gap:10px;align-items:center"><span class="spinner"></span><span>Investigating with read-only tools… <span class="faint mono" data-since="{{ tri.started.isoformat() if tri.started else '' }}"></span></span></div>
+      {% elif tri and tri.state == "pending" %}<div class="muted">Starts after the evidence is collected.</div>
+      {% else %}<div class="muted">Not run for this case.</div>{% endif %}
+      </section>
+    </details>
   </div>
 
-  <div class="card" id="progress" data-live data-state="{{ case.status }}"><section>
-    <h2>Response</h2>
+  {% set done = case.progress | selectattr("state", "equalto", "done") | list | length %}
+  <details class="card fold" open data-fold="response" id="progress" data-live data-state="{{ case.status }}">
+    <summary><span>Response</span><span class="faint">{{ done }} of {{ case.progress | length }} steps done</span></summary>
+    <section>
     <ol class="steps">
       {% for s in case.progress %}
-      <li class="{{ s.state }} {{ s.tone }}">
+      <li class="{{ s.state }}">
         <span class="dot">{% if s.state == "running" %}<span class="spinner"></span>{% elif s.state == "done" %}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>{% elif s.state == "failed" %}<span style="font-size:11px;font-weight:700">✕</span>{% endif %}</span>
         <div>
           <div class="t">{{ s.title }}</div>
@@ -212,15 +214,15 @@
       </li>
       {% endfor %}
     </ol>
-  </section></div>
+    </section>
+  </details>
 </div>
 
 {# ---- Investigate ---- #}
 <div data-panel="investigate" class="stack" hidden>
   {% if log_links %}
-  <div class="card">
-    <section style="padding-bottom:6px"><h2 style="margin-bottom:4px">Logs in Grafana</h2>
-      <div class="muted">Opens Explore with the query and the window around the detection (−15 min to +30 min).</div></section>
+  <details class="card fold" open data-fold="grafana">
+    <summary><span>Logs in Grafana</span><span class="faint">−15 min to +30 min around the detection</span></summary>
     <div>
       {% for l in log_links %}
       <a class="link-row" href="{{ l.url }}" target="_blank" rel="noopener">
@@ -232,12 +234,12 @@
       {% endfor %}
       <a class="link-row" href="{{ dashboard }}" target="_blank" rel="noopener"><span style="color:var(--strong);font-weight:600">Response dashboard</span><span class="go">Open ↗</span><span class="muted">Cases, containment latency and AI verdicts around this time.</span></a>
     </div>
-  </div>
+  </details>
   {% endif %}
 
-  <div class="card">
+  <details class="card fold" open data-fold="workload">
+    <summary><span>Workload at detection time</span><span class="faint mono">{{ case.workload }}</span></summary>
     <section>
-      <h2>Workload at detection time</h2>
       {% if ev.get("error") %}<div class="notice err">Evidence collection failed: {{ ev.error }}</div>{% endif %}
       {% if pod.get("found") %}
       <dl class="kv">
@@ -270,38 +272,46 @@
       {% endfor %}</tbody>
     </table></section>
     {% endif %}
-    {% if ev.get("events") %}
-    <section style="padding:0;overflow-x:auto"><table>
-      <thead><tr><th style="padding-left:20px">Kubernetes event</th><th>Message</th></tr></thead>
+  </details>
+
+  {% if ev.get("events") %}
+  <details class="card fold" open data-fold="events">
+    <summary><span>Kubernetes events</span><span class="faint">{{ ev.events | length }}</span></summary>
+    <div style="overflow-x:auto"><table>
       <tbody>{% for e in ev.events %}<tr><td style="padding-left:20px;white-space:nowrap"><span class="{{ 'sev-warning' if e.type == 'Warning' else 'muted' }}">{{ e.reason }}</span>{% if e.count and e.count > 1 %} <span class="faint">×{{ e.count }}</span>{% endif %}</td><td class="muted">{{ e.message }}</td></tr>{% endfor %}</tbody>
-    </table></section>
-    {% endif %}
-  </div>
+    </table></div>
+  </details>
+  {% endif %}
 </div>
 
 {# ---- Technical ---- #}
 <div data-panel="technical" class="stack" hidden>
-  <div class="card"><section>
-    <h2>Commands</h2>
-    {{ codeblock("kubectl", "kubectl", case.commands|join("\n")) }}
-  </section></div>
+  <details class="card fold" open data-fold="commands">
+    <summary><span>Commands</span><span class="faint">kubectl</span></summary>
+    <section>{{ codeblock("kubectl", "kubectl", case.commands|join("\n")) }}</section>
+  </details>
   {% if case.other_fields or case.key_fields %}
-  <details class="card fold"><summary><span>All Falco fields</span><span class="faint">{{ case.all_fields_text.count("\n") + 1 }} fields</span></summary>
+  <details class="card fold" data-fold="fields">
+    <summary><span>All Falco fields</span><span class="faint">{{ case.all_fields_text.count("\n") + 1 }} fields</span></summary>
     <section>{{ codeblock("fields", "output_fields", case.all_fields_text) }}</section>
   </details>
   {% endif %}
   {% if raw_alert %}
-  <details class="card fold"><summary><span>Raw alert</span><span class="faint">JSON</span></summary>
+  <details class="card fold" data-fold="raw">
+    <summary><span>Raw alert</span><span class="faint">JSON</span></summary>
     <section>{{ codeblock("raw", "alert.json", raw_alert) }}</section>
   </details>
   {% endif %}
-  <div class="card"><section>
-    <h2>Case</h2>
-    <dl class="kv">
-      <dt>Case ID</dt><dd class="mono">{{ case.name }}</dd>
-      <dt>Engine</dt><dd>Argo Workflow in <code>k8s-soar</code> (raw view: <code>make argo-ui</code>)</dd>
-      {% if grafana_base %}<dt>Grafana</dt><dd><a href="{{ grafana_base }}" target="_blank" rel="noopener">{{ grafana_base }}</a></dd>{% endif %}
-    </dl>
-  </section></div>
+  <details class="card fold" open data-fold="caseinfo">
+    <summary><span>Case</span><span class="faint mono">{{ case.name }}</span></summary>
+    <section>
+      <dl class="kv">
+        <dt>Case ID</dt><dd class="mono">{{ case.name }}</dd>
+        <dt>Engine</dt><dd>Argo Workflow in <code>k8s-soar</code> (raw view: <code>make argo-ui</code>)</dd>
+        {% if grafana_base %}<dt>Grafana</dt><dd><a href="{{ grafana_base }}" target="_blank" rel="noopener">{{ grafana_base }}</a></dd>{% endif %}
+      </dl>
+    </section>
+  </details>
+</div>
 </div>
 {% endblock %}

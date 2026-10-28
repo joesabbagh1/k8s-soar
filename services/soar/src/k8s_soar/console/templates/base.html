@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="soar-ui" content="{{ ui_version }}">
 <title>{% block title %}Cases{% endblock %} — k8s-soar</title>
 <script>try { var t = localStorage.getItem("soar-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
@@ -119,6 +120,19 @@ tr:last-child td { border-bottom: 0; }
 dl.kv { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px 16px; margin: 0; }
 dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; min-width: 0; }
 details summary { cursor: pointer; color: var(--muted); }
+/* collapsible cards */
+.fold > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 15px 20px; cursor: pointer; color: var(--strong); font-weight: 600; font-size: 13px; user-select: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+.fold > summary > span:first-child::before { content: ""; width: 7px; height: 7px; border-right: 2px solid var(--faint);
+  border-bottom: 2px solid var(--faint); transform: rotate(-45deg); transition: transform .15s; margin-right: 2px; }
+.fold[open] > summary > span:first-child::before { transform: rotate(45deg); }
+.fold > summary > span + span { font-weight: 400; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fold[open] > summary { border-bottom: 1px solid var(--line); }
+.fold > summary:hover { background: var(--hover); border-radius: 12px; }
+.fold[open] > summary:hover { border-radius: 12px 12px 0 0; }
+.panels, .stack { display: grid; gap: 18px; }
 details summary:hover { color: var(--strong); }
 
 button.primary { font: 600 14px var(--sans); padding: 10px 18px; border-radius: 9px; cursor: pointer; border: 0;
@@ -215,14 +229,22 @@ button.ghost:hover { background: var(--hover); }
     try { localStorage.setItem("soar-theme", next); } catch (e) {}
   });
 
+  // A newer console was deployed: load it fully instead of mixing old CSS/JS with new markup.
+  var uiVersion = (document.querySelector("meta[name=soar-ui]") || {}).content;
+  function stale(doc) {
+    var v = (doc.querySelector("meta[name=soar-ui]") || {}).content;
+    return v && uiVersion && v !== uiVersion;
+  }
+
   function adopt(doc) {
     document.title = doc.title;
     var badge = doc.getElementById("awaiting-count"), mine = document.getElementById("awaiting-count");
     if (badge && mine) { mine.textContent = badge.textContent; mine.hidden = badge.hidden; }
   }
 
-  function replaceMain(html) {
+  function replaceMain(html, url) {
     var doc = new DOMParser().parseFromString(html, "text/html");
+    if (stale(doc)) { location.href = url || location.href; return; }
     adopt(doc);
     main().replaceWith(doc.querySelector("main"));
     setup();
@@ -232,7 +254,7 @@ button.ghost:hover { background: var(--hover); }
     main().classList.add("loading");
     try {
       var r = await fetch(url, { headers: { "X-Soar-Client": "1" } });
-      replaceMain(await r.text());
+      replaceMain(await r.text(), r.url);
       if (push) history.pushState(null, "", r.url);
       window.scrollTo(0, 0);
     } catch (e) { location.href = url; }
@@ -243,6 +265,7 @@ button.ghost:hover { background: var(--hover); }
     var r = await fetch(location.href, { headers: { "X-Soar-Client": "1" } });
     if (!r.ok) return;
     var doc = new DOMParser().parseFromString(await r.text(), "text/html");
+    if (stale(doc)) { location.reload(); return; }
     adopt(doc);
     doc.querySelectorAll("[data-live]").forEach(function (next) {
       var cur = document.getElementById(next.id);
@@ -250,9 +273,11 @@ button.ghost:hover { background: var(--hover); }
       var busy = cur.contains(document.activeElement) || cur.dataset.dirty;
       if (busy && cur.dataset.state === next.dataset.state) return;
       if (cur.innerHTML.trim() === next.innerHTML.trim() && cur.dataset.state === next.dataset.state) return;
-      var openTabs = cur.querySelectorAll("details[open]").length;
+      // Keep what the user expanded or collapsed.
+      if (cur.tagName === "DETAILS") next.open = cur.open;
+      var inner = cur.querySelectorAll("details"), nextInner = next.querySelectorAll("details");
+      inner.forEach(function (d, i) { if (nextInner[i]) nextInner[i].open = d.open; });
       cur.replaceWith(next);
-      if (openTabs) next.querySelectorAll("details").forEach(function (d) { d.open = true; });
     });
     var newPoll = doc.querySelector("main").dataset.poll;
     main().dataset.poll = newPoll;
@@ -268,7 +293,9 @@ button.ghost:hover { background: var(--hover); }
 
   function tick() {
     document.querySelectorAll("[data-since]").forEach(function (el) {
-      var s = Math.max(0, Math.round((Date.now() - Date.parse(el.dataset.since)) / 1000));
+      var since = Date.parse(el.dataset.since);
+      if (isNaN(since)) return;
+      var s = Math.max(0, Math.round((Date.now() - since) / 1000));
       el.textContent = s < 60 ? s + "s" : Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
     });
   }
@@ -276,12 +303,28 @@ button.ghost:hover { background: var(--hover); }
 
   function showTab(name) {
     document.querySelectorAll("[data-tab]").forEach(function (b) { b.classList.toggle("on", b.dataset.tab === name); });
-    document.querySelectorAll("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== name; });
+    document.querySelectorAll("[data-panel]").forEach(function (p) {
+      var off = p.dataset.panel !== name;
+      p.hidden = off;
+      p.style.display = off ? "none" : "";
+    });
   }
+
+  // Collapsed cards stay collapsed (per card type, per browser).
+  function applyFolds() {
+    document.querySelectorAll("details[data-fold]").forEach(function (d) {
+      try { var v = localStorage.getItem("soar-fold-" + d.dataset.fold); if (v) d.open = v === "open"; } catch (e) {}
+    });
+  }
+  document.addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (d.dataset && d.dataset.fold) { try { localStorage.setItem("soar-fold-" + d.dataset.fold, d.open ? "open" : "closed"); } catch (e) {} }
+  }, true);
   function setup() {
     var first = document.querySelector("[data-tab]");
     if (first) showTab((location.hash.slice(1) && document.querySelector('[data-tab="' + location.hash.slice(1) + '"]')) ? location.hash.slice(1) : first.dataset.tab);
     document.querySelectorAll("form[data-decide]").forEach(syncDecision);
+    applyFolds();
     tick();
   }
   function syncDecision(form) {
@@ -344,7 +387,7 @@ button.ghost:hover { background: var(--hover); }
         btn.disabled = false;
         return;
       }
-      replaceMain(await r.text());
+      replaceMain(await r.text(), r.url);
       history.replaceState(null, "", r.url);
     } catch (e) { err.textContent = "Network error: " + e; btn.disabled = false; }
   });

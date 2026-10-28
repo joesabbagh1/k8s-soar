@@ -9,6 +9,7 @@ GET  /healthz
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -35,6 +36,10 @@ audit = logging.getLogger("k8s_soar.audit")
 app = FastAPI(title="k8s-soar console", version="0.5.1", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
+# Fingerprint of the UI (templates + version); the page reloads itself when it changes.
+templates.env.globals["ui_version"] = hashlib.sha256(
+    b"".join(f.read_bytes() for f in sorted((Path(__file__).parent / "templates").glob("*.html")))
+).hexdigest()[:12]
 templates.env.globals["offset"] = cases.offset
 templates.env.globals["verdict_label"] = lambda v: cases.VERDICT_LABELS.get(v, v)
 templates.env.globals["verdict_explained"] = lambda v: cases.VERDICT_EXPLAINED.get(v, "")
