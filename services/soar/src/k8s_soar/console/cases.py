@@ -315,6 +315,27 @@ class Case:
         return rows
 
     @property
+    def timing_detail(self) -> list[tuple[str, float, str]]:
+        """Inside the 'Route and quarantine' step: our code versus the pod starting (merged cases only)."""
+        respond = self.steps.get("respond")
+        spent = respond.output("timing") if respond else None
+        if not (respond and respond.started and respond.finished and isinstance(spent, dict)):
+            return []
+        startup, work = spent.get("startup_seconds"), spent.get("work_seconds")
+        step = (respond.finished - respond.started).total_seconds()
+        rows: list[tuple[str, float, str]] = []
+        ours = (startup or 0) + (work or 0)
+        if startup is not None:
+            rows.append(
+                ("Python start-up", float(startup), "starting the interpreter and importing the Kubernetes client")
+            )
+        if work is not None:
+            rows.append(("Routing and labelling", float(work), "reading the pod, claiming it and patching its labels"))
+        if ours and step:
+            rows.append(("Pod start (Argo)", max(step - ours, 0.0), "scheduling, Argo's init container, starting ours"))
+        return rows
+
+    @property
     def time_to_contain(self) -> float | None:
         return self.containment.get("latency_seconds") if self.contained else None
 

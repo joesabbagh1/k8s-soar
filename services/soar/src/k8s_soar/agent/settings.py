@@ -30,7 +30,11 @@ class AgentSettings(BaseModel):
     model: str = "claude-sonnet-5-5"
     api_key: str = ""
     base_url: str = ""
-    max_tool_calls: int = 8
+    max_tool_calls: int = 6
+    # Skip the model for alerts below this level (low = triage everything).
+    min_severity: str = "low"
+    # Cases on the same pod this close together share one triage (0 = one triage per case).
+    share_seconds: float = 900.0
     max_tokens: int = 4096
     timeout_seconds: float = 120.0
     # Transient provider errors (429, 5xx, timeouts) are retried with backoff,
@@ -96,7 +100,9 @@ def agent_settings() -> AgentSettings:
         model=env("AI_MODEL", "claude-sonnet-5-5").strip(),
         api_key=env("AI_API_KEY", "").strip(),
         base_url=env("AI_BASE_URL", "").strip(),
-        max_tool_calls=int(env("AI_MAX_TOOL_CALLS", "8")),
+        max_tool_calls=int(env("AI_MAX_TOOL_CALLS", "6")),
+        min_severity=env("AI_MIN_SEVERITY", "low").strip().lower() or "low",
+        share_seconds=float(env("AI_SHARE_SECONDS", "900")),
         max_tokens=int(env("AI_MAX_TOKENS", "4096")),
         timeout_seconds=float(env("AI_TIMEOUT_SECONDS", "120")),
         temperature=float(env("AI_TEMPERATURE")) if env("AI_TEMPERATURE", "").strip() else None,

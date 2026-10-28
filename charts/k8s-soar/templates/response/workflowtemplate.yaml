@@ -180,6 +180,10 @@ spec:
             valueFrom:
               path: /tmp/outputs/contained
               default: "{}"
+          - name: timing
+            valueFrom:
+              path: /tmp/outputs/timing
+              default: "{}"
 
     # 3. Read-only evidence: pod spec, owners, events, logs, Falco + Tetragon history.
     - name: enrich

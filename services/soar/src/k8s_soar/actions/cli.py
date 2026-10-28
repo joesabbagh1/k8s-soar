@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,16 @@ def cmd_guard(args: argparse.Namespace) -> None:
     _write(args.out, "pod", alert.pod or "")
 
 
+def _process_age() -> float | None:
+    """Seconds since this process was exec'd (Linux): interpreter start-up plus imports."""
+    try:
+        ticks = os.sysconf("SC_CLK_TCK")
+        started = int(Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]) / ticks
+        return round(float(Path("/proc/uptime").read_text().split()[0]) - started, 2)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def cmd_respond(args: argparse.Namespace) -> None:
     """Route the alert and, if it is a containment rule, quarantine the pod: both in one pod.
 
@@ -55,6 +67,12 @@ def cmd_respond(args: argparse.Namespace) -> None:
     time to the first step that touches the pod. A containment error is recorded in
     `contained` and the case carries on (notifications still go out and say it failed).
     """
+    startup = _process_age()  # exec to here: Python start-up and importing the libraries
+    begun = time.monotonic()
+
+    def record_timing() -> None:
+        _write(args.out, "timing", {"startup_seconds": startup, "work_seconds": round(time.monotonic() - begun, 2)})
+
     alert = parse(args.alert)
     decision = guard.decide(alert, kube(), settings())
     print(f"alert: {alert.short()}")
@@ -64,14 +82,17 @@ def cmd_respond(args: argparse.Namespace) -> None:
     _write(args.out, "pod", alert.pod or "")
     if decision.action != guard.CONTAIN:
         _write(args.out, "contained", {"skipped": f"decision is {decision.action!r}; nothing to contain"})
+        record_timing()
         return
     try:
         result = contain.contain(alert, kube(), settings(), args.case)
     except Exception as exc:  # noqa: BLE001 - the case must carry on and report the failure
         logging.getLogger(__name__).exception("containment failed")
         _write(args.out, "contained", {"error": f"containment failed: {type(exc).__name__}: {exc}"})
+        record_timing()
         return
     _write(args.out, "contained", result)
+    record_timing()
     print(f"metric=containment rule={alert.slug} time_to_contain_seconds={result['latency_seconds']}")
 
 

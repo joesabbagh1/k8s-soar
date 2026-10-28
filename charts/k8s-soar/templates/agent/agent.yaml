@@ -103,6 +103,10 @@ spec:
               value: {{ .Values.ai.reasoningEffort | quote }}
             - name: AI_TEMPERATURE
               value: {{ .Values.ai.temperature | quote }}
+            - name: AI_MIN_SEVERITY
+              value: {{ .Values.ai.minSeverity | quote }}
+            - name: AI_SHARE_SECONDS
+              value: {{ .Values.ai.shareSeconds | quote }}
             - name: AI_MAX_RETRIES
               value: {{ .Values.ai.maxRetries | quote }}
             - name: AI_BUDGET_SECONDS

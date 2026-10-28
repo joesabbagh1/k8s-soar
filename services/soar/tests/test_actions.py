@@ -182,6 +182,8 @@ def test_respond_routes_and_quarantines_in_one_step(tmp_path, raw_alert, respond
     assert out["action"] == "contain" and out["namespace"] == "shop" and out["pod"] == "web-5d9c-abcde"
     contained = json.loads(out["contained"])
     assert contained["orphaned"] and "latency_seconds" in contained
+    timing = json.loads(out["timing"])  # where this step's own time went (start-up vs the API calls)
+    assert timing["work_seconds"] >= 0 and set(timing) == {"startup_seconds", "work_seconds"}
     assert kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels["security.quarantine"] == "true"
 
 

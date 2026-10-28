@@ -18,6 +18,10 @@ class Verdict(BaseModel):
     recommended_actions: list[RecommendedAction] = Field(default_factory=list, max_length=5)
     rationale: str = Field(default="", max_length=2000)
     model: str = ""
+    # What this triage cost: model calls and tokens (0 when the verdict was shared from another case).
+    calls: int = 0
+    tokens: int = 0
+    reused: bool = False  # another case on the same pod was triaged moments ago; its verdict is shared
 
     @property
     def approval_default(self) -> str:

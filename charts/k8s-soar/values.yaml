@@ -184,7 +184,12 @@ ai:
   # Extra env for providers that need more than a key (e.g. AWS_REGION_NAME
   # for bedrock, AZURE_API_VERSION for azure).
   extraEnv: []
-  maxToolCalls: 8
+  maxToolCalls: 6
+  # Token use: the case's evidence already goes to the model, so most triages need no tool call.
+  # Alerts below this level skip the model entirely (low = triage everything).
+  minSeverity: low            # low | medium | high | critical
+  # Cases on the same pod this close together share ONE triage instead of paying for one each.
+  shareSeconds: 900           # 0 = a triage per case
   maxTokens: 4096             # includes thinking tokens on Gemini 3
   timeoutSeconds: 120         # per model call (thinking models can be slow)
   # Empty = provider default. Gemini/Vertex default to low thinking for triage.

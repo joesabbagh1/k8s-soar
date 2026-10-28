@@ -25,9 +25,12 @@ detection (Falco) fired on a workload. Decide whether it is a true positive,
 benign, or needs human review, and what the on-call engineer should do next.
 
 How to work:
-- Use the tools to gather evidence: the pod spec and owners, its logs and
-  events, other Falco alerts for the same pod, Tetragon kernel events.
-- Prefer a few targeted tool calls over many. Stop when you can decide.
+- The evidence is already collected inside <untrusted_data>: the alert, the pod
+  spec and owners, its events and recent logs, other Falco alerts for the pod and
+  Tetragon kernel events. Decide from it first.
+- Call a tool only for something that is missing or needs a closer look (for
+  example more log lines). Most cases need none; never repeat what is already
+  in the evidence.
 - Finish by calling submit_verdict exactly once.
 
 What the deterministic playbook already did is in <decision>. "contain" means
@@ -111,18 +114,52 @@ def _default_completion(**kwargs: Any) -> Any:
     return litellm.completion(**kwargs)
 
 
+# The evidence is sent with every model call of a triage, so keep it to what decides a verdict.
+EVIDENCE_LINES = 8  # Falco / Tetragon lines kept
+LINE_CHARS = 300
+LOG_CHARS = 1500
+EVIDENCE_CHARS = 12000
+
+
+def _compact(context: dict[str, Any]) -> dict[str, Any]:
+    out = dict(context)
+    for key in ("falco_history", "tetragon_events"):
+        if isinstance(out.get(key), list):
+            out[key] = [str(line)[:LINE_CHARS] for line in out[key][:EVIDENCE_LINES]]
+    if isinstance(out.get("logs"), str):
+        out["logs"] = out["logs"][-LOG_CHARS:]
+    if isinstance(out.get("events"), list):
+        out["events"] = out["events"][-8:]
+    return out
+
+
 def _user_message(alert: Alert, context: dict[str, Any], decision: dict[str, Any]) -> str:
     data = {
         "alert": alert.model_dump(mode="json", exclude={"fields"}),
         "falco_fields": alert.fields,
         "mitre": alert.mitre,
-        "context": context,
+        "context": _compact(context),
     }
     return (
         f"<decision>{json.dumps(decision)}</decision>\n"
-        f"<untrusted_data>\n{json.dumps(data, default=str)[:30000]}\n</untrusted_data>\n"
+        f"<untrusted_data>\n{json.dumps(data, default=str)[:EVIDENCE_CHARS]}\n</untrusted_data>\n"
         "Investigate and submit your verdict."
     )
+
+
+def _tokens(response: Any) -> int:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0
+    total = getattr(usage, "total_tokens", None)
+    if isinstance(total, int):
+        return total
+    return int(getattr(usage, "prompt_tokens", 0) or 0) + int(getattr(usage, "completion_tokens", 0) or 0)
+
+
+def _cached(text: str) -> list[dict[str, Any]]:
+    """A message body Anthropic may cache: the same prefix is re-read on every call of the loop."""
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
 
 
 def _message_dict(message: Any) -> dict[str, Any]:
@@ -147,10 +184,20 @@ def run_triage(
     sleep: Callable[[float], None] = time.sleep,
 ) -> Verdict:
     deadline = time.monotonic() + settings.budget_seconds
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": _user_message(alert, context, decision)},
-    ]
+    system, user = SYSTEM_PROMPT, _user_message(alert, context, decision)
+    if settings.provider == "anthropic":  # OpenAI and DeepSeek cache a repeated prefix on their own
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": _cached(system)},
+            {"role": "user", "content": _cached(user)},
+        ]
+    else:
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    spent = {"calls": 0, "tokens": 0}
+
+    def done(verdict: Verdict) -> Verdict:
+        verdict.calls, verdict.tokens = spent["calls"], spent["tokens"]
+        return verdict
+
     call_kwargs: dict[str, Any] = {
         "model": settings.litellm_model,
         "max_tokens": settings.max_tokens,
@@ -173,6 +220,8 @@ def run_triage(
         response = _call(
             completion, settings, deadline, sleep, messages=messages, tool_choice=tool_choice, **call_kwargs
         )
+        spent["calls"] += 1
+        spent["tokens"] += _tokens(response)
         message = response.choices[0].message
         tool_calls = getattr(message, "tool_calls", None) or []
         messages.append(_message_dict(message))
@@ -180,7 +229,7 @@ def run_triage(
         if not tool_calls:
             # Some models answer in plain JSON instead of calling the tool.
             try:
-                return _verdict_from_args(message.content or "", settings.model)
+                return done(_verdict_from_args(message.content or "", settings.model))
             except (json.JSONDecodeError, ValidationError, TypeError):
                 messages.append({"role": "user", "content": "Call submit_verdict with your conclusion now."})
                 continue
@@ -189,7 +238,7 @@ def run_triage(
             name = call.function.name
             if name == SUBMIT_VERDICT:
                 try:
-                    return _verdict_from_args(call.function.arguments, settings.model)
+                    return done(_verdict_from_args(call.function.arguments, settings.model))
                 except (json.JSONDecodeError, ValidationError) as exc:
                     result = json.dumps({"error": f"invalid verdict: {exc}"[:1000]})
             else:

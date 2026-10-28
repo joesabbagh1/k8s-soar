@@ -189,7 +189,7 @@
         <div style="color:var(--strong)">{{ v.summary }}</div>
         {% if v.evidence %}<ul class="muted" style="margin:10px 0 0;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
         {% if v.rationale %}<details style="margin-top:10px"><summary>Reasoning</summary><p class="muted" style="margin:6px 0 0">{{ v.rationale }}</p></details>{% endif %}
-        <div class="faint" style="font-size:12px;margin-top:12px">{{ v.model or "AI" }} · advisory</div>
+        <div class="faint" style="font-size:12px;margin-top:12px">{{ v.model or "AI" }} · advisory{% if v.reused %} · shared with another alert on this pod, no extra cost{% elif v.tokens %} · {{ v.calls }} model call{{ "s" if v.calls != 1 }}, {{ "{:,}".format(v.tokens) }} tokens{% endif %}</div>
       {% elif tri and tri.state == "running" %}
         <div style="display:flex;gap:10px;align-items:center"><span class="spinner"></span><span>Investigating with read-only tools… <span class="faint mono" data-since="{{ tri.started.isoformat() if tri.started else '' }}"></span></span></div>
       {% elif tri and tri.state == "pending" %}<div class="muted">Starts after the evidence is collected.</div>
@@ -336,6 +336,16 @@
               <td class="mono" style="text-align:right;white-space:nowrap">{{ "%.0f"|format(seconds) }}s</td></tr>
         {% endfor %}</tbody>
       </table>
+      {% if case.timing_detail %}
+      <div class="label" style="margin:14px 0 6px">Inside "Route and quarantine"</div>
+      <table>
+        <tbody>{% for label, seconds, covers in case.timing_detail %}
+          <tr><td style="padding-left:0;white-space:nowrap;color:var(--strong)">{{ label }}</td>
+              <td class="muted">{{ covers }}</td>
+              <td class="mono" style="text-align:right;white-space:nowrap">{{ "%.1f"|format(seconds) }}s</td></tr>
+        {% endfor %}</tbody>
+      </table>
+      {% endif %}
       <div class="faint" style="font-size:12px;margin-top:8px">Timestamps have one-second resolution. Every workflow step runs as its own pod, so pod start-up counts in each step.</div>
     </section>
   </details>

@@ -65,6 +65,7 @@ def test_untrusted_data_is_fenced(alert, kube_fake, settings):
     llm = ScriptedLLM([_response(tool_calls=[_call("1", "submit_verdict", VERDICT)])])
     run_triage(alert, {}, {}, _tools(kube_fake, settings), AgentSettings(), completion=llm)
     user = llm.calls[0]["messages"][1]["content"]
+    user = user if isinstance(user, str) else user[0]["text"]  # Anthropic gets cacheable blocks
     start, end = user.index("<untrusted_data>"), user.index("</untrusted_data>")
     assert start < user.index("ignore previous instructions") < end
 
@@ -212,3 +213,53 @@ def test_call_kwargs_follow_provider(alert, kube_fake, settings):
     claude = AgentSettings(provider="anthropic", model="c", api_key="k", temperature=0.2)
     run_triage(alert, {}, {}, _tools(kube_fake, settings), claude, completion=llm)
     assert llm.calls[0]["temperature"] == 0.2 and "reasoning_effort" not in llm.calls[0]
+
+
+# --- token use -------------------------------------------------------------------------------------
+
+
+def _usage(total):
+    return NS(total_tokens=total, prompt_tokens=total - 10, completion_tokens=10)
+
+
+def test_a_triage_reports_its_calls_and_tokens(alert, kube_fake, settings):
+    first = _response(tool_calls=[_call("1", "mitre_lookup", {"technique_id": "T1496"})])
+    first.usage = _usage(1200)
+    last = _response(tool_calls=[_call("2", "submit_verdict", VERDICT)])
+    last.usage = _usage(1500)
+    cfg = AgentSettings(provider="openai", model="m", api_key="k")
+    verdict = run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=ScriptedLLM([first, last]))
+    assert (verdict.calls, verdict.tokens) == (2, 2700)
+
+
+def test_anthropic_gets_cacheable_prefix_others_plain_text(alert, kube_fake, settings):
+    for provider, cacheable in (("anthropic", True), ("deepseek", False), ("openai", False)):
+        llm = ScriptedLLM([_response(tool_calls=[_call("1", "submit_verdict", VERDICT)])])
+        cfg = AgentSettings(provider=provider, model="m", api_key="k")
+        run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm)
+        system, user = llm.calls[0]["messages"][:2]
+        assert isinstance(system["content"], list) == cacheable and isinstance(user["content"], list) == cacheable
+        if cacheable:
+            assert system["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+def test_the_evidence_sent_with_every_call_is_bounded(alert, kube_fake, settings):
+    noisy = {
+        "falco_history": [f"line {i} " + "x" * 900 for i in range(20)],
+        "tetragon_events": [f"event {i} " + "y" * 900 for i in range(20)],
+        "logs": "z" * 4000,
+        "events": [{"reason": str(i)} for i in range(15)],
+    }
+    llm = ScriptedLLM([_response(tool_calls=[_call("1", "submit_verdict", VERDICT)])])
+    cfg = AgentSettings(provider="openai", model="m", api_key="k")
+    run_triage(alert, noisy, {}, _tools(kube_fake, settings), cfg, completion=llm)
+    user = llm.calls[0]["messages"][1]["content"]
+    assert len(user) < 14000
+    assert "line 7 " in user and "line 8 " not in user  # 8 lines kept
+    assert user.count("z") <= 1500 + 50
+
+
+def test_the_prompt_tells_the_model_the_evidence_is_already_there():
+    from k8s_soar.agent.triage import SYSTEM_PROMPT
+
+    assert "already collected" in SYSTEM_PROMPT and "Most cases need none" in SYSTEM_PROMPT

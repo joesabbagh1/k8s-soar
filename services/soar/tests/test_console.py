@@ -697,3 +697,33 @@ def test_a_failed_quarantine_in_a_merged_case_is_shown_as_failed():
     row = next(r for r in case.progress if r.key == "contain")
     assert row.state == "failed" and "boom" in row.detail
     assert any(e.title == "Containment failed" for e in case.timeline)
+
+
+def test_the_step_timing_splits_our_code_from_the_pod_start():
+    wf = merged_workflow()
+    node = wf["status"]["nodes"]["r"]  # the step ran 10:00:03 -> 10:00:10 = 7 s
+    node["outputs"]["parameters"].append(
+        {"name": "timing", "value": json.dumps({"startup_seconds": 1.5, "work_seconds": 0.9})}
+    )
+    rows = {label: seconds for label, seconds, _ in cases.from_workflow(wf).timing_detail}
+    assert rows == {"Python start-up": 1.5, "Routing and labelling": 0.9, "Pod start (Argo)": pytest.approx(4.6)}
+    assert cases.from_workflow(merged_workflow()).timing_detail == []  # no timing recorded (older case)
+
+
+def test_the_case_page_shows_what_the_triage_cost(client):
+    http, fake = client
+    spent = {
+        "verdict": "true_positive",
+        "confidence": 0.9,
+        "severity": "critical",
+        "summary": "s",
+        "calls": 3,
+        "tokens": 12345,
+        "recommended_actions": ["delete-pod"],
+    }
+    shared = dict(spent, calls=0, tokens=0, reused=True)
+    fake.workflows.clear()
+    fake.workflows["paid"] = workflow(verdict=spent, name="paid")
+    fake.workflows["free"] = workflow(verdict=shared, name="free")
+    assert "3 model calls, 12,345 tokens" in http.get("/cases/paid").text
+    assert "shared with another alert on this pod, no extra cost" in http.get("/cases/free").text

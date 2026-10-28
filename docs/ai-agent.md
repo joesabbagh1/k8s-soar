@@ -94,6 +94,13 @@ Verdict schema (`services/soar/src/k8s_soar/verdict.py`):
   Gemini 3 degrades below 1.0. On Gemini/Vertex, triage uses low thinking effort for speed
   (`ai.reasoningEffort: low|medium|high` changes it for any provider that supports it). A wrong key or
   model is not retried, so it shows up immediately as "unavailable: model …".
+- **Token use.** The workflow already collects the evidence, so it goes to the model once, trimmed
+  (8 Falco and Tetragon lines, 1500 characters of log), and the prompt tells the model to call a tool
+  only for something missing: most triages need no tool call. Cases on the same pod that arrive within
+  `ai.shareSeconds` (15 min) share one triage: the first pays, the others reuse its verdict
+  ("shared with another alert on this pod"). Anthropic prompts are marked cacheable; OpenAI and
+  DeepSeek cache a repeated prefix on their own. `ai.minSeverity` skips the model for lower
+  alerts. Every verdict shows its model calls and tokens on the case page and in the audit log.
 - **Cost and latency bounds.** `maxToolCalls` (default 8), `maxTokens` per call, `timeoutSeconds`.
   On the last allowed call the model is forced to submit a verdict.
 - **Failure is harmless.** Provider errors, timeouts or invalid output yield
