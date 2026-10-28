@@ -66,7 +66,7 @@ spec:
         app.kubernetes.io/name: soar-agent
         app.kubernetes.io/part-of: k8s-soar
       annotations:
-        checksum/config: {{ toJson .Values.ai | sha256sum | trunc 16 }}
+        checksum/config: {{ list (toJson .Values.ai) (include (print $.Template.BasePath "/response/config.yaml") .) | toJson | sha256sum | trunc 16 }}
     spec:
       serviceAccountName: {{ include "k8s-soar.agentSA" . }}
       {{- include "k8s-soar.devNode" . | nindent 6 }}

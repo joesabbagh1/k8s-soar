@@ -54,6 +54,9 @@ spec:
       labels:
         app.kubernetes.io/name: soar-console
         app.kubernetes.io/part-of: k8s-soar
+      annotations:
+        # Settings come from soar-config at startup: restart when they change.
+        checksum/config: {{ include (print $.Template.BasePath "/response/config.yaml") . | sha256sum | trunc 16 }}
     spec:
       serviceAccountName: soar-console
       {{- include "k8s-soar.devNode" . | nindent 6 }}

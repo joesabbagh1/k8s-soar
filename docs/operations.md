@@ -107,7 +107,7 @@ cluster alerts to the response pipeline as notify cases.
 | No cases at all | `kubectl logs -n falco deploy/falco-falcosidekick` (webhook errors?), `kubectl get pods -n k8s-soar` (eventsource + sensor running?), `kubectl logs -n k8s-soar -l sensor-name=soar-router` |
 | Falco rules not firing | `kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco \| grep -i k8s-soar`; plugins missing → `-c falcoctl-artifact-install` logs (needs ghcr.io access) |
 | Case stuck Pending | step image pull (`kubectl describe pod -n k8s-soar <step pod>`), wrong `image.registry` |
-| Pod labelled but not isolated | `kubectl get ccnp k8s-soar-quarantine`, `cilium-dbg policy get` on the node |
+| Pod labelled but not isolated | `make smoke-test` (step 4 probes the console from the quarantined pod); `kubectl get ccnp k8s-soar-quarantine`; `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list` (policy enforcement on the pod) |
 | Quarantined container restarts | probes from the node blocked: check host entity allowed in the policy |
 | Pod CrashLoops with `couldn't initialize inotify: too many open files` | node inotify limit: `sudo sysctl -w fs.inotify.max_user_instances=8192 fs.inotify.max_user_watches=524288` (Ansible sets it persistently), then delete the pod |
 | Console shows "Argo Server unreachable" | `kubectl get pods -n argo`; `console.argoServerUrl`; with `argo.authMode: client` check the soar-console Role |

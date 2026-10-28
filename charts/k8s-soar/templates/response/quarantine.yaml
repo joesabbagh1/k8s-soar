@@ -1,11 +1,15 @@
 {{- if .Values.response.enabled }}
 # Network quarantine for any pod labelled {{ .Values.quarantine.labelKey }}={{ .Values.quarantine.labelValue }}.
 #
-# - all traffic from/to other pods and the outside world is denied (deny rules
-#   win over any allow policy the workload already has);
-# - ingress from the node itself (host entity) stays allowed, so kubelet
+# - egress: everything is denied (entity "all": other pods, the node, the API
+#   server, DNS, the internet). Deny rules win over any allow policy the
+#   workload already has. Replies to allowed ingress (probes) are not new
+#   connections and still flow.
+# - ingress: only the node itself (host entity) is allowed, so kubelet
 #   liveness/readiness probes keep passing and the container is NOT restarted:
 #   the compromised process stays alive for forensics.
+# Pods are matched with "namespace label exists" rather than an empty selector:
+# in a clusterwide policy `{}` does not reliably cover other namespaces.
 apiVersion: cilium.io/v2
 kind: CiliumClusterwideNetworkPolicy
 metadata:
@@ -20,11 +24,12 @@ spec:
   ingress:
     - fromEntities: [host]
   ingressDeny:
-    - fromEndpoints: [{}]
-    - fromEntities: [world, remote-node, kube-apiserver, ingress, unmanaged]
+    - fromEndpoints:
+        - matchExpressions:
+            - { key: k8s:io.kubernetes.pod.namespace, operator: Exists }
+    - fromEntities: [world, remote-node, kube-apiserver, ingress, unmanaged, health]
   egressDeny:
-    - toEndpoints: [{}]
-    - toEntities: [world, host, remote-node, kube-apiserver, ingress, unmanaged]
+    - toEntities: [all]
 {{- if .Values.quarantine.protectLabel }}
 ---
 # Once quarantined, only the responder (release-quarantine action) or a
