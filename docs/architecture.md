@@ -13,7 +13,7 @@
 | Respond | Argo Events | argo-events (controller), k8s-soar (resources) | Webhook → EventBus → Sensor |
 | Respond | Argo Workflows | argo (controller + UI), k8s-soar (cases) | One Workflow per case: the engine |
 | Respond | soar-console | k8s-soar | Analyst UI: case list, case page, decisions (resumes the approval gate via Argo Server) |
-| Respond | soar-actions | k8s-soar | Python steps: guard, contain, enrich, triage, notify, act |
+| Respond | soar-actions | k8s-soar | Python steps: respond (route + quarantine), enrich, triage, decide, notify, act |
 | Triage | soar-agent | k8s-soar | Optional LLM agent, read-only tools, structured verdict |
 | Observe | Prometheus, Loki, Promtail, Grafana | monitoring | Findings + Response dashboards, alerts |
 

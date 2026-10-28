@@ -93,6 +93,10 @@ def parse_case(wf: dict) -> dict:
     for node in (wf.get("status", {}).get("nodes") or {}).values():
         params = {p["name"]: p.get("value", "") for p in (node.get("outputs") or {}).get("parameters") or []}
         outputs[node.get("displayName", "")] = {"phase": node.get("phase", ""), **params}
+    if "respond" in outputs:  # route + quarantine in one step (newer cases)
+        both = outputs["respond"]
+        outputs["guard"] = both
+        outputs["contain"] = {"result": both.get("contained", "")}
     guard = _json(outputs.get("guard", {}).get("decision")) or {}
     contain = _json(outputs.get("contain", {}).get("result")) or {}
     verdict = _json(outputs.get("triage", {}).get("verdict")) or {}

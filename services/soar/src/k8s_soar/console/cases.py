@@ -225,6 +225,11 @@ class Case:
     lead: Case | None = None
 
     @property
+    def merged(self) -> bool:
+        """Routing and quarantine ran as one step (one pod) rather than guard then contain."""
+        return "respond" in self.steps
+
+    @property
     def specific(self) -> bool:
         """The rule names a concrete attack (crypto miner, reverse shell...) rather than generic activity."""
         return bool(self.alert and "soar_specific" in self.alert.tags)
@@ -262,6 +267,21 @@ class Case:
                 rows.append((label, max((end - start).total_seconds(), 0.0), covers))
 
         rows: list[tuple[str, float, str]] = []
+        if self.merged and guard:
+            gap(
+                "Falco to case",
+                alert.time if alert else None,
+                self.created,
+                "Falco, falcosidekick, webhook, event bus, sensor, creating the workflow",
+            )
+            gap("Case to first step", self.created, guard.started, "the workflow controller starting the first step")
+            gap(
+                "Route and quarantine",
+                guard.started,
+                guard.finished,
+                "its pod starting, then routing the alert, claiming the pod and labelling it",
+            )
+            return rows
         gap(
             "Falco to case",
             alert.time if alert else None,
@@ -616,6 +636,10 @@ class Case:
                 if step.phase == "Pending" and step.message:
                     doing = f"Starting: {step.message}"
                 rows.append(StepView(key, title, "running", doing, None, step.started))
+            elif key == "contain" and self.containment.get("error"):
+                rows.append(
+                    StepView(key, title, "failed", str(self.containment["error"]), step.finished, step.started, "bad")
+                )
             elif key == "contain" and not self.contained and "latency_seconds" not in self.containment:
                 rows.append(
                     StepView(
@@ -777,6 +801,20 @@ def from_workflow(wf: dict[str, Any]) -> Case:
             finished=_time(node.get("finishedAt")),
             message=node.get("message", ""),
             outputs=outputs,
+        )
+    if "respond" in steps:
+        # Newer cases route and quarantine in one step. Expose it under the two names the rest of
+        # the console reads (guard: the decision, contain: the quarantine result).
+        both = steps["respond"]
+        steps["guard"] = Step("guard", both.phase, both.started, both.finished, both.message, dict(both.outputs))
+        result = both.outputs.get("contained", "")
+        steps["contain"] = Step(
+            "contain",
+            both.phase,
+            both.started,
+            both.finished,
+            both.message,
+            {"result": result} if result not in ("", "{}") else {},
         )
     return Case(
         name=meta.get("name", ""),

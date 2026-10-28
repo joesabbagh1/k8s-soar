@@ -61,7 +61,7 @@
           "queryType": "range"
         }
       ],
-      "description": "Workflows that passed the Sensor and ran the guard step."
+      "description": "Workflows that passed the Sensor and ran the respond step."
     },
     {
       "id": 2,

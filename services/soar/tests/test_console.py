@@ -652,3 +652,48 @@ def test_the_case_page_is_titled_after_the_groups_specific_rule(client):
     assert "<h1" in page and "Crypto Miner Execution</h1>" in page
     assert "Merged into this case" in page  # the skipped case reads as part of this one
     assert "Crypto Miner Execution" in http.get("/").text
+
+
+# --- merged route + quarantine step ----------------------------------------------------------------------
+
+
+def merged_workflow(**kwargs):
+    """A newer case: one 'respond' step instead of 'guard' then 'contain'."""
+    wf = workflow(**kwargs)
+    nodes = wf["status"]["nodes"]
+    guard, contain = nodes.pop("g"), nodes.pop("c")
+    params = {p["name"]: p["value"] for p in guard["outputs"]["parameters"]}
+    params["contained"] = contain["outputs"]["parameters"][0]["value"]
+    nodes["r"] = _node("respond", **params)
+    nodes["r"].update(startedAt="2026-10-26T10:00:03Z", finishedAt="2026-10-26T10:00:10Z")
+    wf["metadata"]["creationTimestamp"] = "2026-10-26T10:00:02Z"
+    return wf
+
+
+def test_a_merged_case_reads_like_any_other():
+    case = cases.from_workflow(merged_workflow())
+    assert case.merged and case.contained and case.time_to_contain == 0.8
+    assert case.decision["action"] == "contain" and case.owner == "Deployment/web"
+    titles = [e.title for e in case.timeline]
+    assert "Routed to automatic containment" in titles and "Pod quarantined and network-isolated" in titles
+    states = {row.key: row.state for row in case.progress}
+    assert states["guard"] == "done" and states["contain"] == "done"
+
+
+def test_merged_timing_has_one_step_not_two():
+    rows = {label for label, _, _ in cases.from_workflow(merged_workflow()).timing}
+    assert rows == {"Falco to case", "Case to first step", "Route and quarantine"}
+
+
+def test_a_failed_quarantine_in_a_merged_case_is_shown_as_failed():
+    wf = merged_workflow()
+    wf["status"]["nodes"]["r"]["outputs"]["parameters"] = [
+        p
+        if p["name"] != "contained"
+        else {"name": "contained", "value": json.dumps({"error": "containment failed: boom"})}
+        for p in wf["status"]["nodes"]["r"]["outputs"]["parameters"]
+    ]
+    case = cases.from_workflow(wf)
+    row = next(r for r in case.progress if r.key == "contain")
+    assert row.state == "failed" and "boom" in row.detail
+    assert any(e.title == "Containment failed" for e in case.timeline)

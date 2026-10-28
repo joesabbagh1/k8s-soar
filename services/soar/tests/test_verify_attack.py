@@ -173,3 +173,33 @@ def test_expected_rules_come_from_the_readme_backticks(v, tmp_path):
 def test_real_rule_files_define_containment_tags(v):
     tags = v.rule_tags()
     assert "soar_contain" in tags[MINER] and "soar_notify" in tags["K8sSoar Process Discovery"]
+
+
+def test_a_merged_respond_step_is_understood(v):
+    wf = {
+        "metadata": {
+            "name": "merged",
+            "creationTimestamp": "2026-10-28T11:58:00Z",
+            "labels": {
+                "k8s-soar.io/rule": v.slug(MINER),
+                "k8s-soar.io/namespace": "shop",
+                "k8s-soar.io/pod": "miner-1",
+            },
+        },
+        "status": {
+            "phase": "Succeeded",
+            "nodes": {
+                "r": {
+                    "displayName": "respond",
+                    "outputs": {
+                        "parameters": [
+                            {"name": "decision", "value": json.dumps({"action": "contain", "reason": "r"})},
+                            {"name": "contained", "value": json.dumps({"latency_seconds": 4.2, "orphaned": True})},
+                        ]
+                    },
+                }
+            },
+        },
+    }
+    out = v.evaluate("x", [MINER], TAGS, [v.parse_case(wf)], NOW, 15)
+    assert "FAIL" not in levels(out) and any("quarantined 4.2s" in m for _, m in out)

@@ -126,6 +126,9 @@ response:
     jetstreamVersion: "2.10.10"
   actions:
     image: k8s-soar-actions
+    # Keep the actions image on every node (a tiny DaemonSet running it idle). Without it the
+    # first case after an update waits for the image pull before the pod can be quarantined.
+    prepull: true
     resources:
       requests: { cpu: 50m, memory: 64Mi }
       limits: { memory: 256Mi }

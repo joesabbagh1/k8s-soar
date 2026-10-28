@@ -5,13 +5,12 @@ A **case** is one Argo Workflow created from the `falco-response` WorkflowTempla
 UI (`make argo-ui`) shows raw step inputs/outputs/logs, and `make cases` lists them in the terminal.
 
 ```text
-guard ──► case[ contain ─► enrich ─► triage ─► decide ─► notify ─► auto-act | review[ approve ─► act ] ]
+respond ──► case[ enrich ─► triage ─► decide ─► notify ─► auto-act | review[ approve ─► act ] ]
 ```
 
 | Step | What it does | Fails the case? |
 |------|--------------|-----------------|
-| guard | Routes the alert (`contain`, `notify`, `skip`) and atomically claims the pod (annotation `k8s-soar.io/seen-rules`, resourceVersion precondition) | yes |
-| contain | Only when guard said `contain`: adds `security.quarantine=true` + `k8s-soar.io/case=<case>`, removes the controller's selector labels (originals saved in `k8s-soar.io/original-labels`), records owner in `k8s-soar.io/owner` | shown red, case continues |
+| respond | One pod does both: routes the alert (`contain`, `notify`, `skip`), atomically claims the pod (annotation `k8s-soar.io/seen-rules`, resourceVersion precondition), and for `contain` adds `security.quarantine=true` + `k8s-soar.io/case=<case>`, removes the controller's selector labels (originals saved in `k8s-soar.io/original-labels`) and records the owner in `k8s-soar.io/owner`. A quarantine error is recorded and shown on the case; the case carries on | routing errors: yes; a failed quarantine: no, it is reported |
 | enrich | Pod spec, owners, events, last logs, NetworkPolicies, Falco history and Tetragon events from Loki | no (best effort) |
 | triage | Calls the AI agent; `unavailable` when disabled or failing | no |
 | decide | Per severity: automatic action or analyst approval (see [Decisions](#decisions)). Outputs `route` = `auto`, `human` or `none` | yes |
@@ -134,3 +133,15 @@ The pipeline is generic: new behaviour usually means a new Falco rule with the r
 a new kind of action, add a subcommand to `services/soar/src/k8s_soar/actions/`, a template to
 `charts/k8s-soar/templates/response/workflowtemplate.yaml`, and the needed verbs to
 `templates/response/rbac.yaml`.
+
+## How fast is containment?
+
+Containment time runs from Falco's event to the label landing on the pod. Falco to the workflow takes
+about a second; after that every workflow step is a pod, and a pod start costs several seconds, so
+the **first** step is what sets the time: route and quarantine run together in one step (`respond`)
+for exactly that reason. The `soar-image-prepull` DaemonSet keeps the actions image on every node so
+the first case after an update does not wait for an image pull (`response.actions.prepull`).
+
+The **Technical** tab of every case shows *Where the time went*. Expect roughly 5-10 seconds on a lab
+box. To go lower still, an always-on responder would have to label the pod itself instead of a
+workflow pod; k8s-soar does not ship one because it needs its own permission to label pods.

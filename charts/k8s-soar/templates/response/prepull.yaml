@@ -1,0 +1,47 @@
+{{- if and .Values.response.enabled .Values.response.actions.prepull }}
+# Keeps the actions image pulled on every node. A case's first step is a pod running this image;
+# when the image is not on the node yet (the first case after an update), containment waits for
+# the pull. This DaemonSet rolls out with each new image tag, so the pull happens during
+# deployment instead.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: soar-image-prepull
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+    app.kubernetes.io/name: soar-image-prepull
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: soar-image-prepull
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: soar-image-prepull
+        app.kubernetes.io/part-of: k8s-soar
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 0
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: warm
+          image: {{ include "k8s-soar.image" (dict "root" . "name" .Values.response.actions.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [sleep, infinity]
+          resources:
+            requests: { cpu: 1m, memory: 4Mi }
+            limits: { memory: 16Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+{{- end }}

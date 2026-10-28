@@ -157,3 +157,49 @@ def test_cli_contain_noop_when_not_contain(tmp_path, raw_alert):
 
     cli.main(["--out", str(tmp_path), "contain", "--alert", json.dumps(raw_alert), "--case", "c", "--action", "notify"])
     assert "skipped" in json.loads((tmp_path / "result").read_text())
+
+
+# --- respond: route + quarantine in one step ---------------------------------------------------------
+
+
+@pytest.fixture
+def respond_env(monkeypatch, kube_fake, settings):
+    from k8s_soar.actions import cli
+
+    monkeypatch.setattr(cli, "kube", lambda: kube_fake)
+    monkeypatch.setattr(cli, "settings", lambda: settings)
+    return cli
+
+
+def _outputs(path):
+    return {p.name: p.read_text() for p in path.iterdir()}
+
+
+def test_respond_routes_and_quarantines_in_one_step(tmp_path, raw_alert, respond_env, kube_fake):
+    raw_alert["time"] = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    respond_env.main(["--out", str(tmp_path), "respond", "--alert", json.dumps(raw_alert), "--case", "case-1"])
+    out = _outputs(tmp_path)
+    assert out["action"] == "contain" and out["namespace"] == "shop" and out["pod"] == "web-5d9c-abcde"
+    contained = json.loads(out["contained"])
+    assert contained["orphaned"] and "latency_seconds" in contained
+    assert kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels["security.quarantine"] == "true"
+
+
+def test_respond_does_not_quarantine_when_the_alert_is_skipped(tmp_path, raw_alert, respond_env, kube_fake):
+    raw_alert["priority"] = "debug"
+    raw_alert["tags"] = []  # not routed to SOAR and below critical
+    respond_env.main(["--out", str(tmp_path), "respond", "--alert", json.dumps(raw_alert), "--case", "case-1"])
+    out = _outputs(tmp_path)
+    assert out["action"] == "skip" and "skipped" in json.loads(out["contained"])
+    assert "security.quarantine" not in (kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels or {})
+
+
+def test_respond_reports_a_quarantine_failure_and_still_succeeds(tmp_path, raw_alert, respond_env, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("api server unavailable")
+
+    monkeypatch.setattr("k8s_soar.actions.cli.contain.contain", boom)
+    respond_env.main(["--out", str(tmp_path), "respond", "--alert", json.dumps(raw_alert), "--case", "case-1"])
+    out = _outputs(tmp_path)
+    assert out["action"] == "contain"  # the case carries on (notifications say the quarantine failed)
+    assert "api server unavailable" in json.loads(out["contained"])["error"]

@@ -48,6 +48,33 @@ def cmd_guard(args: argparse.Namespace) -> None:
     _write(args.out, "pod", alert.pod or "")
 
 
+def cmd_respond(args: argparse.Namespace) -> None:
+    """Route the alert and, if it is a containment rule, quarantine the pod: both in one pod.
+
+    Each workflow step is a pod and a pod start costs seconds, so the time to contain is the
+    time to the first step that touches the pod. A containment error is recorded in
+    `contained` and the case carries on (notifications still go out and say it failed).
+    """
+    alert = parse(args.alert)
+    decision = guard.decide(alert, kube(), settings())
+    print(f"alert: {alert.short()}")
+    _write(args.out, "decision", decision.as_dict())
+    _write(args.out, "action", decision.action)
+    _write(args.out, "namespace", alert.namespace or "")
+    _write(args.out, "pod", alert.pod or "")
+    if decision.action != guard.CONTAIN:
+        _write(args.out, "contained", {"skipped": f"decision is {decision.action!r}; nothing to contain"})
+        return
+    try:
+        result = contain.contain(alert, kube(), settings(), args.case)
+    except Exception as exc:  # noqa: BLE001 - the case must carry on and report the failure
+        logging.getLogger(__name__).exception("containment failed")
+        _write(args.out, "contained", {"error": f"containment failed: {type(exc).__name__}: {exc}"})
+        return
+    _write(args.out, "contained", result)
+    print(f"metric=containment rule={alert.slug} time_to_contain_seconds={result['latency_seconds']}")
+
+
 def cmd_contain(args: argparse.Namespace) -> None:
     if args.action != guard.CONTAIN:
         _write(args.out, "result", {"skipped": f"decision is {args.action!r}; nothing to contain"})
@@ -122,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("guard", help="decide contain / notify / skip and claim the pod")
     p.add_argument("--alert", required=True)
     p.set_defaults(func=cmd_guard)
+
+    p = sub.add_parser("respond", help="route the alert and quarantine the pod, in one step")
+    p.add_argument("--alert", required=True)
+    p.add_argument("--case", required=True, help="case id (workflow name)")
+    p.set_defaults(func=cmd_respond)
 
     p = sub.add_parser("contain", help="quarantine and orphan the pod")
     p.add_argument("--alert", required=True)

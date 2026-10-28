@@ -25,12 +25,12 @@ flowchart LR
 
   subgraph W[Case = one Argo Workflow]
     direction TB
-    g[1 guard<br/>route + dedup] --> c[2 contain<br/>quarantine label<br/>+ detach pod] --> e[3 enrich<br/>pod, logs, events,<br/>Falco + Tetragon history]
-    e --> a[4 triage<br/>AI verdict] --> n[5 notify<br/>Slack, Jira, Grafana] --> ap[6 approve<br/>analyst picks action] --> x[7 act<br/>delete / scale 0 / release]
+    g[1 respond<br/>route + dedup<br/>quarantine label<br/>+ detach pod] --> e[2 enrich<br/>pod, logs, events,<br/>Falco + Tetragon history]
+    e --> a[3 triage<br/>AI verdict] --> n[4 notify<br/>Slack, Jira, Grafana] --> ap[5 approve<br/>analyst picks action] --> x[6 act<br/>delete / scale 0 / release]
   end
   UI[soar-console<br/>case page + decision] -->|read + resume<br/>Argo Server API| W
 
-  c -->|label| CNP[Cilium quarantine<br/>policy]
+  g -->|label| CNP[Cilium quarantine<br/>policy]
   a <-->|read-only tools| AG[soar-agent<br/>LiteLLM: Anthropic, OpenAI,<br/>Gemini, Bedrock, Ollama...]
   L --> G[Grafana]
 ```
@@ -39,8 +39,8 @@ Concretely, for `kubectl exec` into a pod followed by `cat /var/run/secrets/.../
 
 1. **Falco** matches `K8sSoar Service Account Token Read By Shell Tool` (tags `soar_contain`, `T1552.007`).
 2. **falcosidekick** posts the JSON event to the in-cluster webhook; the **Sensor** opens a case: a Workflow named `k8ssoar-service-account-token-read-by-shell-tool-xxxxx`, labelled with the namespace and pod.
-3. **guard** checks the namespace isn't a platform namespace, the pod isn't already quarantined, and the same alert wasn't handled in the last 10 minutes (atomic claim on the pod).
-4. **contain** labels the pod `security.quarantine=true` → the Cilium policy cuts all its traffic (kubelet probes still pass, so the process stays alive for forensics), and removes its ReplicaSet selector labels → the Deployment schedules a clean replacement and Services stop routing to it. Typical time-to-contain: a few seconds.
+3. **respond** checks the namespace isn't a platform namespace, the pod isn't already quarantined, and the same alert wasn't handled in the last 10 minutes (atomic claim on the pod).
+4. In the same step it labels the pod `security.quarantine=true` → the Cilium policy cuts all its traffic (kubelet probes still pass, so the process stays alive for forensics), and removes its ReplicaSet selector labels → the Deployment schedules a clean replacement and Services stop routing to it. Containment takes about as long as one pod start, typically 5–10 seconds after the alert (see **Where the time went** on each case).
 5. **enrich** collects pod spec, owner chain, events, recent logs, other Falco alerts and Tetragon events for that pod.
 6. **triage** (optional) asks the AI agent for a verdict: `true_positive | benign | needs_review`, confidence, evidence and recommended next action.
 7. **notify** posts to Slack, opens a Jira issue (MITRE mapping, evidence, AI summary, links) and annotates Grafana — each only if configured.
