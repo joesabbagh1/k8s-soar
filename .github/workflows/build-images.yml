@@ -1,0 +1,91 @@
+name: Build images
+
+# Reusable: builds the three service images for amd64 and arm64 on native
+# runners (no QEMU), with a per-image/per-arch layer cache, then publishes one
+# multi-arch tag per entry in `tags`.
+on:
+  workflow_call:
+    inputs:
+      tags:
+        description: Space-separated image tags, e.g. "sha-1a2b3c4 main" or "0.5.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  build:
+    name: ${{ matrix.target }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [actions, console, agent]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: services/soar
+          target: ${{ matrix.target }}
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/k8s-soar-${{ matrix.target }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-${{ matrix.arch }}
+      - name: Record digest
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.target }}-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.target }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish:
+    name: publish ${{ matrix.target }}
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [actions, console, agent]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-${{ matrix.target }}-*
+          merge-multiple: true
+          path: /tmp/digests
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Multi-arch tags
+        env:
+          IMAGE: ${{ env.REGISTRY }}/k8s-soar-${{ matrix.target }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          args=()
+          for tag in $TAGS; do args+=(-t "$IMAGE:$tag"); done
+          sources=()
+          for f in /tmp/digests/*; do sources+=("$IMAGE@$(cat "$f")"); done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$IMAGE:${TAGS%% *}"

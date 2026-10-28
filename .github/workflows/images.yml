@@ -1,0 +1,32 @@
+name: Images
+
+# Every push to main publishes images tagged sha-<7-char commit> and main, so a
+# cluster can run any commit (`./k8s-soar update`) without cutting a release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tags:
+    runs-on: ubuntu-24.04
+    outputs:
+      tags: ${{ steps.t.outputs.tags }}
+    steps:
+      - id: t
+        run: echo "tags=sha-${GITHUB_SHA::7} main" >> "$GITHUB_OUTPUT"
+
+  images:
+    needs: tags
+    uses: ./.github/workflows/build-images.yml
+    with:
+      tags: ${{ needs.tags.outputs.tags }}
+    secrets: inherit

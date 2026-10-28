@@ -33,13 +33,24 @@ jobs:
       - run: pytest -q
 
   images:
-    name: Service images build
-    runs-on: ubuntu-latest
+    name: Service images build (${{ matrix.target }})
+    # On main, images.yml builds and publishes them.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [actions, console, agent]
     steps:
       - uses: actions/checkout@v4
-      - run: docker build --target actions services/soar
-      - run: docker build --target console services/soar
-      - run: docker build --target agent services/soar
+      - uses: docker/setup-buildx-action@v3
+      # Build only (images are published by images.yml / release.yml); reuses their amd64 cache.
+      - uses: docker/build-push-action@v6
+        with:
+          context: services/soar
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}-amd64
 
   shell:
     name: Shellcheck
