@@ -37,6 +37,26 @@ Answers are stored in `deploy/profiles/local.yaml` (settings; helmfile applies i
 profiles) and `deploy/secrets.env` (tokens, mode 600). Both files are gitignored. Without a
 terminal (CI, GitOps), edit those two files and run `make secrets deploy`.
 
+## Shipping code changes
+
+| Situation | Command | How long |
+|-----------|---------|----------|
+| Run what's on `main` | `./k8s-soar update` | CI build (a couple of minutes, cached), then about a minute to roll out |
+| Edit Python on the box and see it now | `./k8s-soar dev on` | Instant: console and agent restart on save, steps use it from the next case |
+| A stable version | tag `vX.Y.Z` (release) | Images and the chart published under that version |
+
+Every push to `main` publishes the images as `sha-<commit>` and `main` (`.github/workflows/images.yml`).
+They are built on native amd64 and arm64 runners with a layer cache, and dependencies sit in their
+own layer, so a code change only rebuilds the last small layer. `./k8s-soar update` runs
+`git pull`, waits until that commit's images exist, pins `k8sSoar.image.tag` to it in
+`profiles/local.yaml`, and deploys. `./k8s-soar update --release` returns to the chart's release
+version.
+
+Dev mode mounts `services/soar/src` from the node into the console, agent and workflow step pods
+as a read-only hostPath, with `PYTHONPATH` pointing at it. It pins them to that node. Use it on the
+lab box only. Changes to `pyproject.toml` (dependencies) still need images, so run
+`./k8s-soar update` for those. `./k8s-soar status` warns while dev mode is on.
+
 ## Configuration map
 
 | What | Where |

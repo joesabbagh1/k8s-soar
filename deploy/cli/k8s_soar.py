@@ -5,6 +5,8 @@
   ./k8s-soar configure      change settings on an installed stack (pre-filled), then apply
   ./k8s-soar test-notify    send a test message to every configured channel
   ./k8s-soar status         health check (scripts/verify.sh)
+  ./k8s-soar update         git pull, wait for CI images of that commit, deploy them
+  ./k8s-soar dev on|off     pods run services/soar/src from this checkout (instant changes)
 
 Settings go to deploy/profiles/local.yaml (helmfile applies it last) and secrets to
 deploy/secrets.env (loaded into Kubernetes Secrets by scripts/secrets.sh). Both
@@ -23,6 +25,7 @@ import os
 import shlex
 import shutil
 import smtplib
+import socket
 import ssl
 import subprocess
 import sys
@@ -49,7 +52,8 @@ PROVIDERS = [
     ("azure", "Azure OpenAI", ""),
     ("bedrock", "AWS Bedrock (IAM, no key)", ""),
     ("ollama", "Ollama, self-hosted (no key)", "qwen2.5"),
-    ("openrouter", "OpenRouter", ""),
+    ("openrouter", "OpenRouter (many models, including free :free variants such as DeepSeek)", ""),
+    ("deepseek", "DeepSeek (direct, paid API)", ""),
     ("mistral", "Mistral", ""),
 ]
 NO_KEY_PROVIDERS = {"ollama", "bedrock"}
@@ -382,7 +386,14 @@ def _choose_many_numbered(question: str, options: list[tuple[str, str]], default
 
 
 # Model families that clearly belong to one provider (catches e.g. a Claude model on Gemini).
-MODEL_FAMILIES = {"claude": "anthropic", "gpt-": "openai", "o1": "openai", "o3": "openai", "gemini": "gemini"}
+MODEL_FAMILIES = {
+    "claude": "anthropic",
+    "gpt-": "openai",
+    "o1": "openai",
+    "o3": "openai",
+    "gemini": "gemini",
+    "deepseek": "deepseek",
+}
 MULTI_PROVIDER = {"openrouter", "bedrock", "azure", "ollama", "vertex_ai"}
 
 
@@ -921,6 +932,137 @@ def cmd_test_notify(_: argparse.Namespace) -> None:
     sys.exit(1 if failed else 0)
 
 
+# --- update / dev --------------------------------------------------------------------
+
+IMAGES = ["k8s-soar-actions", "k8s-soar-console", "k8s-soar-agent"]
+REPO_ACTIONS = "https://github.com/joesabbagh1/k8s-soar/actions/workflows/images.yml"
+
+
+def _registry(profile: dict) -> str:
+    configured = profile.get("k8sSoar", {}).get("image", {}).get("registry")
+    if configured:
+        return configured
+    for line in (ROOT / "charts" / "k8s-soar" / "values.yaml").read_text().splitlines():
+        if line.strip().startswith("registry:"):
+            return line.split(":", 1)[1].split("#")[0].strip().strip('"')
+    return "ghcr.io/joesabbagh1"
+
+
+def image_exists(registry: str, image: str, tag: str) -> bool:
+    """Anonymous manifest check on GHCR (the images are public)."""
+    host, _, owner = registry.partition("/")
+    repo = f"{owner}/{image}"
+    try:
+        with urllib.request.urlopen(  # noqa: S310 - fixed https host from the chart's registry
+            f"https://{host}/token?scope=repository:{repo}:pull&service={host}", timeout=10
+        ) as resp:
+            token = json.load(resp).get("token", "")
+        req = urllib.request.Request(
+            f"https://{host}/v2/{repo}/manifests/{tag}",
+            method="HEAD",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.oci.image.index.v1+json,"
+                "application/vnd.docker.distribution.manifest.list.v2+json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10):  # noqa: S310
+            return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _wait_for_images(registry: str, tag: str, minutes: int = 25) -> None:
+    started = time.monotonic()
+    frame = 0
+    while True:
+        missing = [img for img in IMAGES if not image_exists(registry, img, tag)]
+        if not missing:
+            if INTERACTIVE:
+                sys.stdout.write("\r\033[K")
+            print(f"{green('✔')} Images {tag} are published {dim(f'{time.monotonic() - started:.0f}s')}")
+            return
+        if time.monotonic() - started > minutes * 60:
+            sys.exit(
+                red(f"✖ Images {tag} not published after {minutes} min ({', '.join(missing)}). See {REPO_ACTIONS}")
+            )
+        for _ in range(150):  # re-check every 15s, spinner meanwhile
+            if INTERACTIVE:
+                sys.stdout.write(f"\r{cyan(SPINNER[frame % len(SPINNER)])} Waiting for CI to publish {tag}{dim('…')}")
+                sys.stdout.flush()
+            frame += 1
+            time.sleep(0.1)
+
+
+def cmd_update(args: argparse.Namespace) -> None:
+    """Run the latest commit of main (images built by CI), or go back to the release version."""
+    root_profile = load_profile()
+    k8s = root_profile.setdefault("k8sSoar", {})
+    if args.release:
+        running = "the release version"
+        k8s.get("image", {}).pop("tag", None)
+        write_profile(root_profile)
+        print(f"{green('✔')} Tracking releases again (image tag = chart appVersion)")
+    else:
+        print()
+        task("Pulling the latest code", ["git", "pull", "--ff-only"])
+        sha = _git("rev-parse", "--short=7", "HEAD")
+        tag = f"sha-{sha}"
+        running = f"commit {sha}"
+        print(dim(f"  {_git('log', '-1', '--format=%s')}"))
+        _wait_for_images(_registry(root_profile), tag)
+        k8s.setdefault("image", {})["tag"] = tag
+        write_profile(root_profile)
+    task("Applying to the cluster", ["make", "deploy-soar"])
+    print()
+    print(green(bold("Done.")) + f" The cluster runs {running}.")
+
+
+def _node_name() -> str:
+    names = subprocess.run(
+        ["kubectl", "get", "nodes", "-o", "jsonpath={.items[*].metadata.name}"],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    ).stdout.split()
+    host = socket.gethostname().split(".")[0]
+    if host in names:
+        return host
+    if len(names) == 1:
+        return names[0]
+    sys.exit("Can't tell which node holds this checkout. Run this on a cluster node.")
+
+
+def cmd_dev(args: argparse.Namespace) -> None:
+    root_profile = load_profile()
+    k8s = root_profile.setdefault("k8sSoar", {})
+    if args.state == "on":
+        source = ROOT / "services" / "soar" / "src"
+        if not cluster_reachable():
+            sys.exit("No reachable cluster. Dev mode runs on the cluster node that holds this checkout.")
+        k8s["dev"] = {"enabled": True, "sourcePath": str(source), "node": _node_name()}
+    else:
+        k8s["dev"] = {"enabled": False}
+    write_profile(root_profile)
+    print()
+    task("Applying to the cluster", ["make", "deploy-soar"])
+    print()
+    if args.state == "on":
+        print(green(bold("Dev mode on.")) + f" Pods run the code in {k8s['dev']['sourcePath']}.")
+        print(dim("Edit or git pull: the console and agent restart on save; workflow steps use it from the next case."))
+        print(
+            dim(
+                "Dependency changes (pyproject.toml) still need images: ./k8s-soar update. Turn off: ./k8s-soar dev off"
+            )
+        )
+    else:
+        print(green(bold("Dev mode off.")) + " Pods run the code baked into the images again.")
+
+
 def cmd_status(_: argparse.Namespace) -> None:
     sys.exit(subprocess.run(["./scripts/verify.sh"], cwd=ROOT).returncode)
 
@@ -942,6 +1084,12 @@ def main() -> None:
     sub.add_parser("configure", help="change settings and apply them").set_defaults(func=cmd_configure)
     sub.add_parser("test-notify", help="send a test message to each channel").set_defaults(func=cmd_test_notify)
     sub.add_parser("status", help="health check").set_defaults(func=cmd_status)
+    p = sub.add_parser("update", help="pull main and run its CI-built images (no release needed)")
+    p.add_argument("--release", action="store_true", help="go back to the release version of the chart")
+    p.set_defaults(func=cmd_update)
+    p = sub.add_parser("dev", help="dev mode: pods run the Python source from this checkout")
+    p.add_argument("state", choices=["on", "off"])
+    p.set_defaults(func=cmd_dev)
     args = parser.parse_args()
     try:
         args.func(args)

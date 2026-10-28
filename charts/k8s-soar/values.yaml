@@ -166,7 +166,8 @@ console:
 # ------------------------------------------------------------------------------
 ai:
   enabled: false
-  # anthropic | openai | gemini | azure | bedrock | vertex_ai | ollama | openrouter | mistral
+  # anthropic | openai | gemini | azure | bedrock | vertex_ai | ollama | openrouter | mistral | deepseek
+  # Free DeepSeek: provider openrouter, model "deepseek/<model>:free" (OpenRouter key).
   provider: anthropic
   model: claude-sonnet-5-5
   # Custom endpoint: Ollama (http://ollama:11434), Azure OpenAI, LiteLLM proxy...
@@ -197,6 +198,16 @@ ai:
   resources:
     requests: { cpu: 50m, memory: 192Mi }
     limits: { memory: 512Mi }
+
+# ------------------------------------------------------------------------------
+# Dev mode (`./k8s-soar dev on|off`): mount services/soar/src from the node into
+# the console, agent and workflow steps; no image builds while iterating.
+# Pods are pinned to `node`, the machine holding the repo checkout.
+# ------------------------------------------------------------------------------
+dev:
+  enabled: false
+  sourcePath: ""
+  node: ""
 
 # ------------------------------------------------------------------------------
 # Observability

@@ -95,6 +95,9 @@ else
     echo "      fix: raise fs.inotify.max_user_instances on the nodes (see docs/operations.md)"
   fi
 fi
+if kubectl get deploy -n "$SOAR_NS" soar-console -o jsonpath='{.spec.template.spec.containers[0].env[*].name}' 2>/dev/null | grep -w PYTHONPATH >/dev/null; then
+  warning "dev mode is on: pods run the source checkout (./k8s-soar dev off)"
+fi
 if kubectl get deploy -n "$SOAR_NS" soar-console >/dev/null 2>&1; then
   rollout deploy/soar-console "$SOAR_NS" "analyst console (make console)"
 else

@@ -22,6 +22,15 @@ setup: ## Guided setup: questions, then install (./k8s-soar setup)
 configure: ## Change response, decisions, AI or notifications (./k8s-soar configure)
 	./k8s-soar configure
 
+update: ## Pull main and run its CI-built images, no release needed (./k8s-soar update)
+	./k8s-soar update
+
+dev: ## Dev mode: pods run services/soar/src from this checkout (./k8s-soar dev on)
+	./k8s-soar dev on
+
+dev-off: ## Leave dev mode
+	./k8s-soar dev off
+
 test-notify: ## Send a test message to every configured channel
 	./k8s-soar test-notify
 
@@ -115,5 +124,5 @@ help:
 	  /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } \
 	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
 
-.PHONY: setup configure test-notify bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
+.PHONY: setup configure update dev dev-off test-notify bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
 	argo-ui console grafana grafana-password smoke-test venv test lint images push help

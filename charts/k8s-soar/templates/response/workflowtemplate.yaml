@@ -35,6 +35,8 @@ spec:
   volumes:
     - name: outputs
       emptyDir: {}
+    {{- include "k8s-soar.devVolume" . | nindent 4 }}
+  {{- include "k8s-soar.devNode" . | nindent 2 }}
   arguments:
     parameters:
       - name: alert

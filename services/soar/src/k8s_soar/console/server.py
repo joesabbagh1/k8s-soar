@@ -30,7 +30,7 @@ from .argo import ArgoClient, ArgoError, console_settings
 log = logging.getLogger("k8s_soar.console")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar console", version="0.4.4", docs_url=None, redoc_url=None)
+app = FastAPI(title="k8s-soar console", version="0.5.0", docs_url=None, redoc_url=None)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
 templates.env.globals["offset"] = cases.offset
@@ -214,7 +214,19 @@ def main() -> None:
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))  # noqa: S104
+    port = int(os.environ.get("PORT", "8080"))
+    if os.environ.get("SOAR_DEV_RELOAD") == "true":
+        # Dev mode: source mounted from the node (PYTHONPATH); restart on every save.
+        uvicorn.run(
+            "k8s_soar.console.server:app",
+            host="0.0.0.0",  # noqa: S104
+            port=port,
+            reload=True,
+            reload_dirs=[os.environ.get("PYTHONPATH", ".")],
+            reload_includes=["*.py", "*.html"],
+        )
+        return
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104
 
 
 if __name__ == "__main__":

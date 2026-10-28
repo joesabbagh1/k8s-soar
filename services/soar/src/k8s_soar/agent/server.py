@@ -28,7 +28,7 @@ from .triage import run_triage
 log = logging.getLogger("k8s_soar.agent")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar agent", version="0.4.4")
+app = FastAPI(title="k8s-soar agent", version="0.5.0")
 
 
 class TriageRequest(BaseModel):
@@ -82,7 +82,19 @@ def main() -> None:
     # LiteLLM logs every call at INFO; our triage lines and the audit line are enough.
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").addFilter(lambda r: "/healthz" not in r.getMessage())
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))  # noqa: S104
+    port = int(os.environ.get("PORT", "8080"))
+    if os.environ.get("SOAR_DEV_RELOAD") == "true":
+        # Dev mode: source mounted from the node (PYTHONPATH); restart on every save.
+        uvicorn.run(
+            "k8s_soar.agent.server:app",
+            host="0.0.0.0",  # noqa: S104
+            port=port,
+            reload=True,
+            reload_dirs=[os.environ.get("PYTHONPATH", ".")],
+            reload_includes=["*.py", "*.html"],
+        )
+        return
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104
 
 
 if __name__ == "__main__":

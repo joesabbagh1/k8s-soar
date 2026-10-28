@@ -53,6 +53,41 @@ JIRA_PROJECT_KEY: jira-project-key
 GRAFANA_API_TOKEN: grafana-api-token
 {{- end }}
 
+{{/*
+Dev mode (`./k8s-soar dev on`): the Python source from the repo on the node is
+mounted over the installed package, so code changes are live without building
+images. Console and agent reload on save; workflow steps use it from the next case.
+*/}}
+{{- define "k8s-soar.devEnv" -}}
+{{- if .Values.dev.enabled }}
+- name: PYTHONPATH
+  value: /dev-src
+- name: SOAR_DEV_RELOAD
+  value: "true"
+{{- end }}
+{{- end }}
+{{- define "k8s-soar.devMount" -}}
+{{- if .Values.dev.enabled }}
+- name: dev-src
+  mountPath: /dev-src
+  readOnly: true
+{{- end }}
+{{- end }}
+{{- define "k8s-soar.devVolume" -}}
+{{- if .Values.dev.enabled }}
+- name: dev-src
+  hostPath:
+    path: {{ required "dev.sourcePath is required when dev.enabled" .Values.dev.sourcePath }}
+    type: Directory
+{{- end }}
+{{- end }}
+{{- define "k8s-soar.devNode" -}}
+{{- if and .Values.dev.enabled .Values.dev.node }}
+nodeSelector:
+  kubernetes.io/hostname: {{ .Values.dev.node | quote }}
+{{- end }}
+{{- end }}
+
 {{- define "k8s-soar.step" -}}
 image: {{ include "k8s-soar.image" (dict "root" .root "name" .root.Values.response.actions.image) }}
 imagePullPolicy: {{ .root.Values.image.pullPolicy }}
@@ -71,6 +106,7 @@ env:
         key: {{ $key }}
         optional: true
   {{- end }}
+  {{- include "k8s-soar.devEnv" .root | nindent 2 }}
 resources:
   {{- toYaml .root.Values.response.actions.resources | nindent 2 }}
 securityContext:
@@ -85,6 +121,7 @@ securityContext:
 volumeMounts:
   - name: outputs
     mountPath: /tmp/outputs
+  {{- include "k8s-soar.devMount" .root | nindent 2 }}
 {{- end }}
 {{- define "k8s-soar.output" -}}
 - name: {{ . }}
