@@ -13,6 +13,8 @@ import json
 import logging
 import os
 import re
+import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote, urlparse
@@ -72,9 +74,29 @@ def _analyst(request: Request, typed: str) -> str:
     return typed.strip()[:100]
 
 
+_CACHE: dict[str, tuple[float, list[cases.Case]]] = {}
+
+
+def _load_cases_cached(max_age: float = 2.0) -> list[cases.Case]:
+    hit = _CACHE.get("cases")
+    if hit and time.monotonic() - hit[0] < max_age:
+        return hit[1]
+    loaded = _load_cases()
+    _CACHE["cases"] = (time.monotonic(), loaded)
+    return loaded
+
+
+def _awaiting_count() -> int:
+    try:
+        return sum(1 for c in _load_cases_cached() if c.awaiting)
+    except ArgoError:
+        return 0
+
+
 def _page(request: Request, template: str, **context) -> HTMLResponse:
     cfg = console_settings()
     context.setdefault("error", "")
+    context.setdefault("awaiting_count", _awaiting_count())
     return templates.TemplateResponse(
         request,
         template,
@@ -109,13 +131,15 @@ def case_list(request: Request, show: str = "open") -> HTMLResponse:
     show = show if show in FILTERS else "open"
     error, all_cases = "", []
     try:
-        all_cases = _load_cases()
+        all_cases = _load_cases_cached()
     except ArgoError as exc:
         error = str(exc)
     counts = {key: sum(1 for c in all_cases if c.status in statuses) for key, statuses in FILTERS.items()}
     counts["awaiting"] = sum(1 for c in all_cases if c.awaiting)
     visible = [c for c in all_cases if c.status in FILTERS[show]]
-    return _page(request, "cases.html", cases=visible, show=show, counts=counts, error=error)
+    return _page(
+        request, "cases.html", cases=visible, show=show, counts=counts, error=error, awaiting_count=counts["awaiting"]
+    )
 
 
 @app.get("/cases/{name}", response_class=HTMLResponse)
@@ -168,7 +192,19 @@ def decide(
     comment = " ".join(comment.split())[:500]
     message = f"{action} by {who}" + (f": {comment}" if comment else "")
     try:
+        argo().annotate(
+            name,
+            {
+                cases.ANN_BY: who,
+                cases.ANN_AT: datetime.now(UTC).isoformat(timespec="seconds"),
+                cases.ANN_NOTE: comment,
+            },
+        )
+    except Exception:  # noqa: BLE001 - the decision still goes through; only attribution is lost
+        log.exception("could not record the decision on the workflow")
+    try:
         argo().decide(name, action, message)
+        _CACHE.clear()
     except ArgoError as exc:
         raise HTTPException(502, str(exc)) from exc
     audit.info(

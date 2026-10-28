@@ -1,64 +1,64 @@
 {% extends "base.html" %}
-{% block head %}<meta http-equiv="refresh" content="20">
-<style>
-.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
-.tabs { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.tabs a { padding: 6px 14px; color: var(--muted); font-weight: 500; border-left: 1px solid var(--line); }
-.tabs a:first-child { border-left: 0; }
-.tabs a:hover { text-decoration: none; color: var(--text-strong); }
-.tabs a.on { background: var(--raised); color: var(--text-strong); }
-.tabs .n { font-family: var(--mono); font-size: 11.5px; color: var(--faint); margin-left: 6px; }
-.cases td { padding: 12px; }
-.cases tbody tr { position: relative; cursor: pointer; }
-.cases tbody tr:hover td { background: var(--raised); }
-.cases .title { color: var(--text-strong); font-weight: 550; }
-.cases .title:hover { text-decoration: none; }
-.cases .title::after { content: ""; position: absolute; inset: 0; }
-.cases .sub { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
-.empty { padding: 56px 20px; text-align: center; color: var(--muted); }
-.empty strong { display: block; color: var(--text-strong); font-weight: 550; margin-bottom: 4px; }
-@media (max-width: 900px) { .cases .hide-sm { display: none; } }
-</style>{% endblock %}
+{% block poll %}8000{% endblock %}
 {% block content %}
+<style>
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--inset); border: 1px solid var(--line); border-radius: 10px; }
+.seg a { padding: 5px 12px; border-radius: 7px; color: var(--muted); font-weight: 500; }
+.seg a:hover { color: var(--strong); text-decoration: none; }
+.seg a.on { background: var(--surface); color: var(--strong); box-shadow: var(--shadow); }
+.seg .n { color: var(--faint); margin-left: 6px; font-size: 12px; }
+.rows tbody tr { position: relative; }
+.rows tbody tr:hover td { background: var(--hover); }
+.rows .title { color: var(--strong); font-weight: 600; }
+.rows .title:hover { text-decoration: none; }
+.rows .title::after { content: ""; position: absolute; inset: 0; }
+.rows .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.empty { padding: 64px 20px; text-align: center; color: var(--muted); }
+.empty strong { display: block; color: var(--strong); font-size: 15px; margin-bottom: 4px; }
+@media (max-width: 900px) { .rows .hide-sm { display: none; } }
+</style>
 <div class="head">
   <div>
     <h1>Cases</h1>
-    <div class="muted" style="margin-top:2px">
-      {% if counts.awaiting %}<span style="color:var(--high);font-weight:550">{{ counts.awaiting }} awaiting decision</span><span class="faint"> · </span>{% endif %}one case per alert<span class="faint"> · </span>auto-refresh 20s
-    </div>
+    <div class="muted" style="margin-top:4px">One case per alert k8s-soar handled. Updates live.</div>
   </div>
-  <nav class="tabs">
+  <nav class="seg" id="filters" data-live>
     {% for key, label in [("open", "Open"), ("closed", "Closed"), ("all", "All")] %}
     <a href="/?show={{ key }}" class="{{ 'on' if show == key }}">{{ label }}<span class="n">{{ counts.get(key, 0) }}</span></a>
     {% endfor %}
   </nav>
 </div>
 
-<div class="card" style="overflow-x:auto">
+<div class="card" style="overflow-x:auto" id="list" data-live>
 {% if cases %}
-<table class="cases">
+<table class="rows">
   <thead><tr>
-    <th style="width:92px">Severity</th><th>Case</th><th>Workload</th><th class="hide-sm">Pod</th>
-    <th>Status</th><th class="hide-sm">AI</th><th style="text-align:right">Opened</th>
+    <th>Case</th><th>Workload</th><th>Status</th><th class="hide-sm">AI</th><th style="text-align:right">Opened</th>
   </tr></thead>
   <tbody>
   {% for c in cases %}
     {% set v = c.verdict %}
     <tr>
-      <td><span class="sev sev-{{ c.severity }}">{{ c.severity }}</span></td>
-      <td><a class="title" href="/cases/{{ c.name }}">{{ c.title }}</a><div class="sub">{{ c.headline }}</div></td>
-      <td><code>{{ c.workload }}</code></td>
-      <td class="hide-sm">{% if c.pod_state %}<span class="tag {{ 'warn' if c.pod_state == 'quarantined' else '' }}">{{ c.pod_state }}</span>{% else %}<span class="faint">—</span>{% endif %}</td>
-      <td><span class="status {{ c.status }}">{{ c.status_label }}</span></td>
-      <td class="hide-sm">{% if v and v.verdict != "unavailable" %}<span class="{{ 'sev-critical' if v.verdict == 'true_positive' else '' }}">{{ v.verdict.replace("_", " ") }}</span> <span class="faint mono">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
-      <td class="muted mono" style="text-align:right;white-space:nowrap" title="{{ c.created }}">{{ ago(c.created) }}</td>
+      <td>
+        <div><span class="sev sev-{{ c.severity }}">{{ c.severity }}</span></div>
+        <a class="title" href="/cases/{{ c.name }}">{{ c.title }}</a>
+        <div class="sub">{{ c.headline }}</div>
+      </td>
+      <td><code>{{ c.workload }}</code>{% if c.pod_state %}<div style="margin-top:6px"><span class="tag {{ 'warn' if c.pod_state == 'quarantined' else '' }}">{{ c.pod_state }}</span></div>{% endif %}</td>
+      <td>
+        <span class="status {{ c.status }}">{{ c.status_label }}</span>
+        {% if c.status == "in_progress" and c.current %}<div class="sub">{{ c.current.title }}</div>{% endif %}
+      </td>
+      <td class="hide-sm">{% if v and v.verdict != "unavailable" %}<span class="{{ 'sev-critical' if v.verdict == 'true_positive' else '' }}">{{ v.verdict.replace("_", " ")|capitalize }}</span> <span class="faint">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td class="muted" style="text-align:right;white-space:nowrap" title="{{ c.created }}">{{ ago(c.created) }}</td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 {% else %}
   <div class="empty">
-    {% if show == "open" %}<strong>No open cases</strong>Alerts that k8s-soar responds to appear here, newest first.
+    {% if show == "open" %}<strong>No open cases</strong>When Falco fires a k8s-soar rule, the case appears here within seconds.
     {% else %}<strong>No cases</strong>{% endif %}
   </div>
 {% endif %}

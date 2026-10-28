@@ -53,6 +53,38 @@ ACTION_LABELS = {
     "release-quarantine": "False positive — release",
 }
 
+STEP_TITLES = {
+    "guard": "Route the alert",
+    "contain": "Quarantine the pod",
+    "enrich": "Collect evidence",
+    "triage": "AI triage",
+    "decide": "Choose the follow-up",
+    "notify": "Notify",
+    "approve": "Analyst decision",
+    "act": "Run the decided action",
+    "follow-up": "Automatic action or analyst decision",
+}
+STEP_RUNNING = {
+    "guard": "Checking the namespace and recent cases, then claiming the pod so no duplicate case opens",
+    "contain": "Labelling the pod for the Cilium quarantine policy and detaching it from its controller",
+    "enrich": "Reading the pod spec, owners, events and logs, and related Falco and Tetragon activity from Loki",
+    "triage": "The AI agent is investigating with read-only tools; busy providers are retried",
+    "decide": "Applying the per-severity policy: automatic action or analyst decision",
+    "notify": "Sending the case to the configured channels",
+    "act": "Running the decided action on the pod",
+    "auto-act": "Running the automatic action on the pod",
+}
+STEP_SKIPPED = {
+    "contain": "Not a containment rule; the pod was left running",
+    "auto-act": "No action to run",
+    "act": "No action chosen",
+    "approve": "Not needed",
+}
+# Annotations the console writes on the Workflow when an analyst decides.
+ANN_BY = "k8s-soar.io/decided-by"
+ANN_AT = "k8s-soar.io/decided-at"
+ANN_NOTE = "k8s-soar.io/decision-note"
+
 CLOSED_LABELS = {
     "none": "Closed — no action",
     "delete-pod": "Closed — pod deleted",
@@ -138,6 +170,29 @@ class Event:
     title: str
     detail: str = ""
     tone: str = "info"  # info | good | warn | bad
+    step: str = ""
+
+
+@dataclass
+class StepView:
+    """One row of the response progress: what a step did, or is doing right now."""
+
+    key: str
+    title: str
+    state: str  # done | running | waiting | pending | skipped | failed
+    detail: str = ""
+    when: datetime | None = None
+    started: datetime | None = None
+    tone: str = "info"
+
+
+@dataclass
+class DecisionRecord:
+    action: str
+    by: str  # analyst name, "automatic", or "Argo UI"
+    at: datetime | None
+    note: str = ""
+    automatic: bool = False
 
 
 @dataclass
@@ -156,6 +211,7 @@ class Case:
     message: str
     alert: Alert | None
     steps: dict[str, Step] = field(default_factory=dict)
+    annotations: dict[str, str] = field(default_factory=dict)
 
     # --- step outputs ---------------------------------------------------
     @property
@@ -381,12 +437,136 @@ class Case:
             choice.recommended = choice.action == self.recommended
         return options
 
+    # --- decision record ------------------------------------------------
+    @property
+    def decision_record(self) -> DecisionRecord | None:
+        """Who decided what, from the console's annotations; automatic and Argo UI decisions too."""
+        if not self.chosen_action:
+            return None
+        if self.automatic:
+            decide = self.steps.get("decide")
+            return DecisionRecord(
+                self.chosen_action,
+                "automatic",
+                decide.finished if decide else None,
+                self.route.get("reason", ""),
+                automatic=True,
+            )
+        a = self.annotations
+        approve = self.steps.get("approve")
+        if a.get(ANN_BY):
+            return DecisionRecord(
+                self.chosen_action,
+                a[ANN_BY],
+                _time(a.get(ANN_AT)) or (approve and approve.finished),
+                a.get(ANN_NOTE, ""),
+            )
+        # Resumed outside the console (Argo UI / argo CLI): Argo only records its own service account.
+        return DecisionRecord(self.chosen_action, "Argo UI", approve.finished if approve else None)
+
+    @property
+    def decision_note_line(self) -> str:
+        record = self.decision_record
+        if not record:
+            return ""
+        who = "automatically" if record.automatic else f"by {record.by}"
+        return f"Decided {who}" + (f": {record.note}" if record.note else "")
+
+    # --- progress ---------------------------------------------------------
+    @property
+    def progress(self) -> list[StepView]:
+        """Every response step in order, with what it did or is doing now."""
+        events = {e.step: e for e in self.timeline if e.step}
+        rows: list[StepView] = []
+        if self.alert:
+            rows.append(StepView("detect", "Detected by Falco", "done", self.alert.rule, self.alert.time, tone="bad"))
+        plan = ["guard", "contain", "enrich", "triage", "decide", "notify"]
+        route = self.route.get("route")
+        if route == "auto":
+            plan.append("auto-act")
+        elif route == "human":
+            plan += ["approve", "act"]
+        elif not route:
+            plan.append("follow-up")
+        still_running = self.phase in ("Running", "Pending", "")
+        for key in plan:
+            step = self.steps.get(key) if key != "follow-up" else None
+            title = STEP_TITLES.get(key, key)
+            if key == "auto-act":
+                action = self.route.get("action", "none")
+                title = "Automatic action: " + ("none, case closed" if action == "none" else action)
+            if step is None or step.phase == "Skipped":
+                skipped = step is not None or (key in ("auto-act", "act") and not still_running)
+                if key == "auto-act" and self.route.get("action") == "none":
+                    skipped = True
+                rows.append(
+                    StepView(
+                        key, title, "skipped" if skipped else "pending", STEP_SKIPPED.get(key, "") if skipped else ""
+                    )
+                )
+                continue
+            event = events.get("act" if key == "auto-act" else key)
+            if step.phase in ("Failed", "Error"):
+                rows.append(
+                    StepView(
+                        key,
+                        title,
+                        "failed",
+                        step.message or (event.detail if event else ""),
+                        step.finished,
+                        step.started,
+                        "bad",
+                    )
+                )
+            elif key == "approve" and step.phase == "Running":
+                rows.append(
+                    StepView(
+                        key,
+                        "Analyst decision",
+                        "waiting",
+                        "Waiting for a decision in the console",
+                        None,
+                        step.started,
+                        "warn",
+                    )
+                )
+            elif step.phase in ("Running", "Pending"):
+                doing = STEP_RUNNING.get(key, "")
+                if step.phase == "Pending" and step.message:
+                    doing = f"Starting: {step.message}"
+                rows.append(StepView(key, title, "running", doing, None, step.started))
+            elif key == "contain" and not self.contained and "latency_seconds" not in self.containment:
+                rows.append(
+                    StepView(
+                        key,
+                        title,
+                        "skipped",
+                        self.containment.get("skipped") or STEP_SKIPPED["contain"],
+                        step.finished,
+                        step.started,
+                    )
+                )
+            else:
+                detail = event.detail if event else ""
+                done_title = event.title if event else title
+                rows.append(
+                    StepView(
+                        key, done_title, "done", detail, step.finished, step.started, event.tone if event else "info"
+                    )
+                )
+        return rows
+
+    @property
+    def current(self) -> StepView | None:
+        """The step happening right now (or the decision being waited for)."""
+        return next((r for r in self.progress if r.state in ("running", "waiting")), None)
+
     @property
     def timeline(self) -> list[Event]:
         events: list[Event] = []
         alert = self.alert
         if alert:
-            events.append(Event(alert.time, "Detected by Falco", alert.rule, "bad"))
+            events.append(Event(alert.time, "Detected by Falco", alert.rule, "bad", "detect"))
 
         guard = self.steps.get("guard")
         if guard and guard.phase == "Succeeded":
@@ -396,9 +576,9 @@ class Case:
                 "notify": "Routed to notification only",
                 "skip": "Not handled",
             }.get(action, f"Routed: {action}")
-            events.append(Event(guard.finished, title, self.decision.get("reason", "")))
+            events.append(Event(guard.finished, title, self.decision.get("reason", ""), "info", "guard"))
         elif guard and guard.phase in ("Failed", "Error"):
-            events.append(Event(guard.finished, "Routing failed", guard.message, "bad"))
+            events.append(Event(guard.finished, "Routing failed", guard.message, "bad", "guard"))
 
         contain = self.steps.get("contain")
         c = self.containment
@@ -408,9 +588,9 @@ class Case:
                 owners = ", ".join(c.get("owners") or ["its controller"])
                 detail += f" Detached from {owners}; a clean replacement is scheduled."
             title = "Would quarantine the pod (dry-run)" if c.get("dry_run") else "Pod quarantined and network-isolated"
-            events.append(Event(contain.finished, title, detail, "warn" if c.get("dry_run") else "good"))
+            events.append(Event(contain.finished, title, detail, "warn" if c.get("dry_run") else "good", "contain"))
         elif contain and "error" in c:
-            events.append(Event(contain.finished, "Containment failed", str(c["error"]), "bad"))
+            events.append(Event(contain.finished, "Containment failed", str(c["error"]), "bad", "contain"))
 
         enrich = self.steps.get("enrich")
         if enrich and enrich.phase == "Succeeded":
@@ -424,13 +604,15 @@ class Case:
                 parts.append(f"{len(ev['falco_history'])} related Falco alerts")
             if ev.get("tetragon_events"):
                 parts.append(f"{len(ev['tetragon_events'])} Tetragon events")
-            events.append(Event(enrich.finished, "Evidence collected", ", ".join(parts) or "pod details"))
+            events.append(
+                Event(enrich.finished, "Evidence collected", ", ".join(parts) or "pod details", "info", "enrich")
+            )
 
         triage = self.steps.get("triage")
         verdict = self.verdict
         if triage and verdict:
             if verdict.verdict == "unavailable":
-                events.append(Event(triage.finished, "AI triage not available", verdict.summary))
+                events.append(Event(triage.finished, "AI triage not available", verdict.summary, "info", "triage"))
             else:
                 label = VERDICT_LABELS.get(verdict.verdict, verdict.verdict)
                 events.append(
@@ -439,6 +621,7 @@ class Case:
                         f"AI verdict: {label} ({round(verdict.confidence * 100)}% confidence)",
                         verdict.summary,
                         "bad" if verdict.verdict == "true_positive" else "info",
+                        "triage",
                     )
                 )
 
@@ -448,9 +631,9 @@ class Case:
             if sent:
                 detail = ", ".join(f"{k}: {v}" for k, v in sent.items())
                 tone = "bad" if any(str(v).startswith("error") for v in sent.values()) else "info"
-                events.append(Event(notify.finished, "Notifications sent", detail, tone))
+                events.append(Event(notify.finished, "Notifications sent", detail, tone, "notify"))
             else:
-                events.append(Event(notify.finished, "No notification channels configured", "Slack, Jira, Grafana"))
+                events.append(Event(notify.finished, "No notification channels configured", "", "info", "notify"))
 
         decide = self.steps.get("decide")
         route = self.route
@@ -460,22 +643,24 @@ class Case:
                 title = "Automatic response: " + (
                     "no further action" if action == "none" else ACTION_LABELS.get(action, action).lower()
                 )
-                events.append(Event(decide.finished, title, route.get("reason", ""), "warn"))
+                events.append(Event(decide.finished, title, route.get("reason", ""), "warn", "decide"))
             elif route.get("route") == "human":
-                events.append(Event(decide.finished, "Sent to an analyst", route.get("reason", "")))
+                events.append(Event(decide.finished, "Sent to an analyst", route.get("reason", ""), "info", "decide"))
 
         approve = self.steps.get("approve")
         if approve and approve.phase == "Running":
-            events.append(Event(approve.started, "Waiting for an analyst decision", "", "warn"))
+            events.append(Event(approve.started, "Waiting for an analyst decision", "", "warn", "approve"))
         elif approve and approve.phase == "Succeeded":
             label = ACTION_LABELS.get(self.chosen_action, self.chosen_action or "none")
-            events.append(Event(approve.finished, f"Decision: {label}", approve.message))
+            events.append(Event(approve.finished, f"Decision: {label}", self.decision_note_line, "info", "approve"))
 
         act = self.act_step
         if act and act.phase == "Succeeded":
-            events.append(Event(act.finished, "Action executed", str(self.action_result.get("result", "")), "good"))
+            events.append(
+                Event(act.finished, "Action executed", str(self.action_result.get("result", "")), "good", "act")
+            )
         elif act and act.phase in ("Failed", "Error"):
-            events.append(Event(act.finished, "Action failed", act.message, "bad"))
+            events.append(Event(act.finished, "Action failed", act.message, "bad", "act"))
 
         far = datetime.max.replace(tzinfo=UTC)
         events.sort(key=lambda e: e.when or far)  # stable: same-second events keep step order
@@ -519,6 +704,7 @@ def from_workflow(wf: dict[str, Any]) -> Case:
         message=status.get("message", ""),
         alert=alert,
         steps=steps,
+        annotations=meta.get("annotations") or {},
     )
 
 

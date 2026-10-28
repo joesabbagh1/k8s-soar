@@ -86,6 +86,18 @@ class ArgoClient:
     def get_workflow(self, name: str) -> dict[str, Any]:
         return self._request("GET", f"/api/v1/workflows/{self.cfg.namespace}/{name}")
 
+    def annotate(self, name: str, annotations: dict[str, str]) -> None:
+        """Record the decision on the Workflow itself (Argo overwrites the node message on resume)."""
+        from kubernetes import client, config
+
+        try:
+            config.load_incluster_config()
+        except config.ConfigException:
+            config.load_kube_config()
+        client.CustomObjectsApi().patch_namespaced_custom_object(
+            "argoproj.io", "v1alpha1", self.cfg.namespace, "workflows", name, {"metadata": {"annotations": annotations}}
+        )
+
     def decide(self, name: str, action: str, message: str) -> None:
         """Equivalent of `argo node set --output-parameter action=...` then `argo resume`."""
         base = f"/api/v1/workflows/{self.cfg.namespace}/{name}"

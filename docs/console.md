@@ -18,17 +18,28 @@ The **Closed** and **All** tabs show the cases that are finished.
 
 ## Case page
 
-| Section | Content |
-|---------|---------|
-| Header | Severity, rule, status, Falco's one-line description, then workload, owner, image, detection time, time to contain and ATT&CK technique |
-| Activity | The command line (copyable code block), process, parent, file or connection, user, syscall, container, node, rule and technique |
-| Response | Timeline with offsets from detection: detection → routing decision → quarantine (time to contain, replacement scheduled) → evidence collected → AI verdict → notifications → waiting for decision → decision (who, note) → action result |
-| Investigate in Grafana | Loki queries (shown as code) that open Grafana Explore on the case's time window, from 15 minutes before to 30 minutes after detection: Falco alerts on the pod, container logs, Tetragon kernel activity, and the response steps' logs. There's also a link to the Response dashboard |
-| Workload at detection time | Owner chain, service account, node/IP, host access, NetworkPolicies, container security context, Kubernetes events |
-| Commands | Ready-to-copy `kubectl` commands for the pod and the case workflow, all Falco fields, and the raw alert |
-| Decision required | Shown while the case waits. The confirm button names the action and turns red for destructive ones. Actions are described in plain words, and the AI recommendation is marked |
-| AI assessment | Verdict, confidence, summary, evidence, reasoning, model |
-| Case | Workflow ID and Grafana base URL |
+The top of the page always answers "where is this case right now":
+
+| State | What you see |
+|-------|--------------|
+| Awaiting decision | **Your decision**: the AI's verdict and recommendation, the actions as cards (the AI's pick marked), a note and your name. The button names the action and turns red for destructive ones |
+| In progress | The step running now, what it is doing, a live timer, and the steps still to come |
+| Closed | The outcome: who decided ("Decided by Joe · 12m ago — note", "Decided automatically", or "Argo UI" when resumed there) and the action's result |
+| Failed | What failed |
+
+Below it, three tabs:
+
+- **Overview**: what happened (command line as a copyable code block, process, file, user…), the
+  AI assessment, and **Response**, every step in order with done / running / waiting / pending /
+  skipped states, details and timings.
+- **Investigate**: Grafana links (Loki queries on the case's time window), the workload at
+  detection time (owner chain, service account, host access, container security context, events).
+- **Technical**: kubectl commands, all Falco fields, the raw alert, the case ID.
+
+The console behaves like an app. Links and decisions don't reload the page. Open cases update
+in place, every 2.5 s while the response runs and 8 s while a decision is pending, without losing
+your scroll position or what you are typing. The theme switch in the menu bar (light / dark,
+following the OS until you choose) is remembered per browser.
 
 ## Decisions
 
@@ -42,8 +53,8 @@ The **Closed** and **All** tabs show the cases that are finished.
 Before running a destructive action, the console asks for confirmation. A decision does
 three things:
 
-1. It records the analyst and the optional note on the case's `approve` step. They show in the
-   timeline and in the Argo UI.
+1. It records the analyst, the time and the optional note as annotations on the case Workflow
+   (`k8s-soar.io/decided-by`, `decided-at`, `decision-note`).
 2. It resumes the approval gate through the Argo Server API. These are the same calls
    `argo node set` and `argo resume` make.
 3. It logs one audit line: `k8s_soar.audit` `{"event": "decision", ...}` → Loki.

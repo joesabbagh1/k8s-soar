@@ -200,27 +200,32 @@ class FakeArgo:
     def decide(self, name, action, message):
         self.decisions.append((name, action, message))
 
+    def annotate(self, name, annotations):
+        self.workflows[name]["metadata"].setdefault("annotations", {}).update(annotations)
+
 
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(server, "console_settings", lambda: ConsoleSettings())
     fake = FakeArgo([workflow(), workflow(approve="Succeeded", act="Succeeded", phase="Succeeded", name="old-case")])
     server.app.state.argo = fake
+    server._CACHE.clear()
     yield TestClient(server.app), fake
     server.app.state.argo = None
+    server._CACHE.clear()
 
 
 def test_list_and_case_pages_render(client):
     http, _ = client
     page = http.get("/")
     assert page.status_code == 200
-    assert "Reverse Shell" in page.text and "1 awaiting decision" in page.text
+    assert "Reverse Shell" in page.text and 'id="awaiting-count"' in page.text and ">1</span>" in page.text
     assert "old-case" not in page.text  # closed cases are not "open"
     assert "old-case" in http.get("/?show=closed").text
 
     case = http.get("/cases/k8ssoar-reverse-shell-abcde")
     assert case.status_code == 200
-    assert "Decision required" in case.text and "AI PICK" in case.text
+    assert "Your decision" in case.text and "AI PICK" in case.text
     assert "Pod quarantined and network-isolated" in case.text
     # Logs are linked to Grafana for the case's time window, not dumped into the page.
     assert "http://testserver:3000/explore?" in case.text
@@ -323,3 +328,51 @@ def test_grafana_explore_link_is_scoped_to_the_alert():
     assert pane["queries"][0]["datasource"] == {"type": "loki", "uid": "loki"}
     start, end = int(pane["range"]["from"]), int(pane["range"]["to"])
     assert end - start == 45 * 60 * 1000 and start == int(at.timestamp() * 1000) - 15 * 60 * 1000
+
+
+def test_decision_is_recorded_and_shown(client):
+    http, fake = client
+    http.post(
+        "/cases/k8ssoar-reverse-shell-abcde/decide",
+        data={"action": "none", "comment": "lab test", "analyst": "alice"},
+        headers={"origin": "http://testserver"},
+    )
+    wf = fake.workflows["k8ssoar-reverse-shell-abcde"]
+    ann = wf["metadata"]["annotations"]
+    assert ann[cases.ANN_BY] == "alice" and ann[cases.ANN_NOTE] == "lab test"
+    # Argo then resumes the node and overwrites its message with its own service account.
+    for node in wf["status"]["nodes"].values():
+        if node["displayName"] == "approve":
+            node.update(
+                phase="Succeeded",
+                finishedAt="2026-10-26T10:00:05Z",
+                message="Resumed by: map[User:system:serviceaccount:argo:argo-workflows-server]",
+            )
+            node["outputs"]["parameters"] = [{"name": "action", "value": "none"}]
+    wf["status"]["phase"] = "Succeeded"
+    case = cases.from_workflow(wf)
+    assert case.decision_record.by == "alice" and case.decision_record.note == "lab test"
+    page = http.get("/cases/k8ssoar-reverse-shell-abcde").text
+    assert "Decided by" in page and "alice" in page and "Resumed by" not in page
+
+
+def test_argo_ui_resume_is_named_plainly():
+    wf = workflow(approve="Succeeded", phase="Succeeded")
+    for node in wf["status"]["nodes"].values():
+        if node["displayName"] == "approve":
+            node["message"] = "Resumed by: map[User:system:serviceaccount:argo:argo-workflows-server]"
+    assert cases.from_workflow(wf).decision_record.by == "Argo UI"
+
+
+def test_progress_shows_the_running_step():
+    wf = workflow(approve=None)
+    nodes = wf["status"]["nodes"]
+    for key in ("d", "n"):
+        nodes.pop(key)
+    nodes["t"].update(phase="Running", finishedAt=None)
+    nodes["t"]["outputs"] = {}
+    case = cases.from_workflow(wf)
+    assert case.status == cases.IN_PROGRESS
+    assert case.current.key == "triage" and "investigating" in case.current.detail
+    states = {row.key: row.state for row in case.progress}
+    assert states["contain"] == "done" and states["decide"] == "pending" and states["follow-up"] == "pending"
