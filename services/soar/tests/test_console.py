@@ -427,6 +427,10 @@ def member(
         wf["status"]["nodes"]["c"]["outputs"]["parameters"][0]["value"] = json.dumps(
             {"skipped": "not a containment rule"}
         )
+        # Notify-only rules are routed to notify, not containment.
+        guard = wf["status"]["nodes"]["g"]["outputs"]["parameters"]
+        guard[0]["value"] = json.dumps({"action": "notify", "reason": "notify-only rule"})
+        guard[1]["value"] = "notify"
     return wf
 
 
@@ -515,3 +519,65 @@ def test_same_container_and_rules_without_a_container_id_still_group():
     c = member("old-rule", "K8sSoar Process Discovery", 2)  # no container id: matches any group
     related, attached = cases.attach_related([cases.from_workflow(w) for w in (a, b, c)])
     assert list(related) == ["ours"] and attached == {"stock", "old-rule"}
+
+
+def test_a_group_does_not_flicker_while_cases_reach_their_gates():
+    contain = member("contain-case", "K8sSoar Crypto Miner Execution", 0, contained=True, phase="Running")
+    other = member("stock-case", "Drop and execute new binary in container", 0)
+    # The notify-only case waits for a decision while the contain case is still running (its AI
+    # triage is not done): it stays folded in, because the decision on the group will close it.
+    contain["status"]["nodes"].pop("a")
+    contain["status"]["nodes"]["t"]["phase"] = "Running"
+    related, attached = cases.attach_related([cases.from_workflow(w) for w in (other, contain)])
+    assert list(related) == ["contain-case"] and attached == {"stock-case"}
+
+
+def test_the_case_routed_to_containment_is_primary_from_its_first_step():
+    contain = member("contain-case", "K8sSoar Crypto Miner Execution", 1, contained=True)
+    del contain["status"]["nodes"]["c"]  # quarantine not finished yet, but guard already routed it
+    first = member("stock-case", "Drop and execute new binary in container", 0)
+    (group,) = cases.group_cases([cases.from_workflow(w) for w in (first, contain)])
+    assert [c.name for c in group] == ["contain-case", "stock-case"]
+
+
+def test_deciding_on_a_grouped_case_closes_its_primary_too(client):
+    http, fake = client
+    fake.workflows.clear()
+    for wf in (
+        member("quarantine-case", "K8sSoar Crypto Miner Execution", 1, contained=True),
+        member("stock-rule-case", "Drop and execute new binary in container", 0),
+    ):
+        fake.workflows[wf["metadata"]["name"]] = wf
+    http.post(
+        "/cases/stock-rule-case/decide",
+        data={"action": "none", "analyst": "alice"},
+        headers={"origin": "http://testserver"},
+    )
+    assert sorted(n for n, _, _ in fake.decisions) == ["quarantine-case", "stock-rule-case"]
+
+
+def test_a_case_reaching_its_gate_after_the_decision_is_closed_automatically(client):
+    http, fake = client
+    fake.workflows.clear()
+    decided = member(
+        "quarantine-case", "K8sSoar Crypto Miner Execution", 1, contained=True, approve="Succeeded", phase="Succeeded"
+    )
+    decided["metadata"]["annotations"] = {cases.ANN_BY: "alice", cases.ANN_NOTE: "ok"}
+    late = member("stock-rule-case", "Drop and execute new binary in container", 0)  # now waiting at its gate
+    for wf in (decided, late):
+        fake.workflows[wf["metadata"]["name"]] = wf
+    assert server.reconcile_once() == 1
+    assert [(n, a) for n, a, _ in fake.decisions] == [("stock-rule-case", "none")]
+    note = fake.workflows["stock-rule-case"]["metadata"]["annotations"][cases.ANN_NOTE]
+    assert "closed with the decision on quarantine-case" in note
+
+
+def test_nothing_is_closed_while_the_primary_is_undecided(client):
+    http, fake = client
+    fake.workflows.clear()
+    for wf in (
+        member("a", "K8sSoar Crypto Miner Execution", 1, contained=True),
+        member("b", "Drop and execute new binary in container", 0),
+    ):
+        fake.workflows[wf["metadata"]["name"]] = wf
+    assert server.reconcile_once() == 0 and fake.decisions == []

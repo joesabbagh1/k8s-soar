@@ -743,25 +743,17 @@ def _same_incident(group: list[Case], case: Case) -> bool:
     return not cid or not seen or cid in seen
 
 
-def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
-    """One case per pod: alerts on the same pod close together are grouped.
+def group_cases(all_cases: list[Case]) -> list[list[Case]]:
+    """Cases on the same pod and container, close in time, as groups of 2+; the primary is first.
 
-    A pod under attack usually trips several rules (ours and Falco's own) within seconds,
-    and each opens a case. Cases on the same workload no more than GROUP_WINDOW apart form
-    a group. Its primary is the case that quarantined the pod, else the first one that
-    was handled; the others are shown on it as "also detected".
-
-    Returns {primary case name: [other cases, oldest first]} and the names of the grouped
-    cases (hidden from the case list). A case still waiting for a decision stays listed
-    unless its primary also waits: that decision will close it, otherwise it would sit
-    unseen at its approval gate.
+    The primary is the case routed to containment (known as soon as its first step ends, so it
+    doesn't change later), else the first case that was handled, else the first one.
     """
     by_workload: dict[str, list[Case]] = {}
     for case in all_cases:
         if case.alert and case.alert.pod and case.created:
             by_workload.setdefault(case.workload, []).append(case)
-    related: dict[str, list[Case]] = {}
-    attached: set[str] = set()
+    out: list[list[Case]] = []
     for items in by_workload.values():
         items.sort(key=lambda c: c.created)
         groups: list[list[Case]] = []
@@ -775,15 +767,37 @@ def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[st
             if len(group) < 2:
                 continue
             primary = (
-                next((c for c in group if c.contained), None)
+                next((c for c in group if c.contained or c.decision.get("action") == "contain"), None)
                 or next((c for c in group if c.status != SKIPPED), None)
                 or group[0]
             )
-            for case in group:
-                if case is primary or (case.awaiting and not primary.awaiting):
-                    continue
-                related.setdefault(primary.name, []).append(case)
-                attached.add(case.name)
+            out.append([primary] + [c for c in group if c is not primary])
+    return out
+
+
+def group_mates(name: str, all_cases: list[Case]) -> list[Case]:
+    """The other cases in the group that case `name` belongs to."""
+    for group in group_cases(all_cases):
+        if any(c.name == name for c in group):
+            return [c for c in group if c.name != name]
+    return []
+
+
+def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
+    """One case per pod: {primary name: [other cases, oldest first]} and the hidden case names.
+
+    A case waiting for a decision is only listed on its own when its primary has finished
+    without a decision to make (closed, failed, skipped): then nothing else would ever show it.
+    While the primary is still running or waiting, the primary's decision closes it.
+    """
+    related: dict[str, list[Case]] = {}
+    attached: set[str] = set()
+    for primary, *members in group_cases(all_cases):
+        for case in members:
+            if case.awaiting and primary.status in (CLOSED, FAILED, SKIPPED):
+                continue
+            related.setdefault(primary.name, []).append(case)
+            attached.add(case.name)
     for items in related.values():
         items.sort(key=lambda c: c.created)
     return related, attached

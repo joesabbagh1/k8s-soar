@@ -14,7 +14,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -33,7 +35,16 @@ from .argo import ArgoClient, ArgoError, console_settings
 log = logging.getLogger("k8s_soar.console")
 audit = logging.getLogger("k8s_soar.audit")
 
-app = FastAPI(title="k8s-soar console", version="0.5.1", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    stop = threading.Event()
+    threading.Thread(target=_reconcile_loop, args=(stop,), daemon=True).start()
+    yield
+    stop.set()
+
+
+app = FastAPI(title="k8s-soar console", version="0.5.1", docs_url=None, redoc_url=None, lifespan=lifespan)
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
 # Fingerprint of the UI (templates + version); the page reloads itself when it changes.
@@ -193,30 +204,62 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
     )
 
 
-def _close_grouped(primary: str, who: str, action: str, comment: str) -> None:
-    """One decision per pod: other cases grouped under this one that still wait are closed
-    without a second action (the primary's action already applies to the pod)."""
+def _close_one(other: str, who: str, decided: str, action: str, comment: str) -> None:
+    """Close a case that waits at its approval gate because its pod was decided in another case."""
+    argo().annotate(
+        other,
+        {
+            cases.ANN_BY: who,
+            cases.ANN_AT: datetime.now(UTC).isoformat(timespec="seconds"),
+            cases.ANN_NOTE: f"closed with the decision on {decided} ({action})" + (f": {comment}" if comment else ""),
+        },
+    )
+    argo().decide(other, "none", f"closed with the decision on {decided}")
+
+
+def _close_grouped(decided: str, who: str, action: str, comment: str) -> None:
+    """One decision per pod: the other cases in this case's group that still wait are closed
+    without a second action (the chosen action already applies to the pod)."""
     try:
-        group = cases.attach_related(_load_cases())[0].get(primary, [])
+        mates = cases.group_mates(decided, _load_cases())
     except ArgoError:
         return
-    for other in group:
+    for other in mates:
         if not other.awaiting:
             continue
         try:
-            argo().annotate(
-                other.name,
-                {
-                    cases.ANN_BY: who,
-                    cases.ANN_AT: datetime.now(UTC).isoformat(timespec="seconds"),
-                    cases.ANN_NOTE: f"closed with the decision on {primary} ({action})"
-                    + (f": {comment}" if comment else ""),
-                },
-            )
-            argo().decide(other.name, "none", f"closed with the decision on {primary}")
-        except Exception:  # noqa: BLE001 - the primary decision already went through
+            _close_one(other.name, who, decided, action, comment)
+        except Exception:  # noqa: BLE001 - the decision itself already went through
             log.exception("could not close grouped case %s", other.name)
     _CACHE.clear()
+
+
+def reconcile_once() -> int:
+    """Close cases that reached their approval gate after their pod was already decided.
+
+    A case in a group may still be running when the analyst decides on the group; when it
+    reaches its own gate it would ask again. Returns how many were closed.
+    """
+    closed = 0
+    for primary, *members in cases.group_cases(_load_cases()):
+        record = primary.decision_record
+        if primary.status != cases.CLOSED or record is None:
+            continue
+        for other in members:
+            if other.awaiting:
+                _close_one(other.name, record.by, primary.name, primary.chosen_action, record.note)
+                closed += 1
+    if closed:
+        _CACHE.clear()
+    return closed
+
+
+def _reconcile_loop(stop: threading.Event) -> None:
+    while not stop.wait(10):
+        try:
+            reconcile_once()
+        except Exception:  # noqa: BLE001 - keep the loop alive; the next tick retries
+            log.exception("group reconciliation failed")
 
 
 @app.post("/cases/{name}/decide")
