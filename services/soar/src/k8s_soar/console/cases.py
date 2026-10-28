@@ -336,6 +336,17 @@ class Case:
         return rows
 
     @property
+    def time_to_contain_label(self) -> str:
+        """The time to contain as text. The Sensor's timestamp has one-second resolution, so a fast
+        quarantine closer than that to the alert reads 'under 1s' rather than a misleading 0.0s."""
+        seconds = self.time_to_contain
+        if seconds is None:
+            return ""
+        if self.containment.get("fast") and seconds < 1:
+            return "under 1s"
+        return f"{seconds:g}s"
+
+    @property
     def time_to_contain(self) -> float | None:
         return self.containment.get("latency_seconds") if self.contained else None
 
@@ -709,14 +720,14 @@ class Case:
         contain = self.steps.get("contain")
         c = self.containment
         if contain and "latency_seconds" in c:
-            detail = f"{c['latency_seconds']}s after detection."
+            detail = f"{self.time_to_contain_label} after detection."
             if c.get("orphaned"):
                 owners = ", ".join(c.get("owners") or ["its controller"])
                 detail += f" Detached from {owners}; a clean replacement is scheduled."
             title = "Would quarantine the pod (dry-run)" if c.get("dry_run") else "Pod quarantined and network-isolated"
             if c.get("fast") and not c.get("dry_run"):
                 title = "Pod quarantined by the Sensor"
-                detail = f"{c['latency_seconds']}s after detection, before the workflow started." + (
+                detail = f"{self.time_to_contain_label} after detection, before the workflow started." + (
                     f" The workflow then detached it from {', '.join(c.get('owners') or ['its controller'])}; "
                     "a clean replacement is scheduled."
                     if c.get("orphaned")

@@ -748,3 +748,22 @@ def test_a_fast_quarantine_is_reported_as_the_sensors(client):
     assert any(e.title == "Pod quarantined by the Sensor" and "1.4s after detection" in e.detail for e in case.timeline)
     page = http.get(f"/cases/{wf['metadata']['name']}").text
     assert "quarantined 1.4s after detection (by the Sensor)" in page
+
+
+def test_a_sub_second_fast_quarantine_is_shown_as_under_one_second(client):
+    http, fake = client
+    wf = merged_workflow()
+    wf["status"]["nodes"]["r"]["outputs"]["parameters"] = [
+        p
+        if p["name"] != "contained"
+        else {"name": "contained", "value": json.dumps({"latency_seconds": 0.0, "orphaned": True, "fast": True})}
+        for p in wf["status"]["nodes"]["r"]["outputs"]["parameters"]
+    ]
+    fake.workflows.clear()
+    fake.workflows[wf["metadata"]["name"]] = wf
+    case = cases.from_workflow(wf)
+    assert case.time_to_contain_label == "under 1s"  # the Sensor's clock has one-second resolution
+    page = http.get(f"/cases/{wf['metadata']['name']}").text
+    assert "Contained in <b>under 1s</b>" in page and "0.0s" not in page
+    slow = cases.from_workflow(workflow())  # an ordinary workflow quarantine keeps its measured value
+    assert slow.time_to_contain_label == "0.8s"

@@ -88,7 +88,7 @@
     {% if case.owner %}<span>Owner <b class="mono">{{ case.owner }}</b></span>{% endif %}
     {% if a and a.image %}<span>Image <b class="mono">{{ a.image }}</b></span>{% endif %}
     {% if a %}<span>Detected <b>{{ a.time.strftime("%H:%M:%S") }}</b> · {{ ago(a.time) }}</span>{% endif %}
-    {% if case.time_to_contain is not none %}<span>Contained in <b>{{ case.time_to_contain }}s</b></span>{% endif %}
+    {% if case.time_to_contain is not none %}<span>Contained in <b>{{ case.time_to_contain_label }}</b></span>{% endif %}
     {% for t in case.mitre %}<a href="{{ t.url }}" target="_blank" rel="noopener" title="{{ t.name }} · {{ t.tactic }}">{{ t.id }} {{ t.name }}</a>{% endfor %}
   </div>
 </header>
@@ -327,7 +327,7 @@
   {% set timing = case.timing %}
   {% if timing %}
   <details class="card fold" open data-fold="timing">
-    <summary><span>Where the time went</span><span class="faint">{% if case.containment.get("fast") %}quarantined {{ case.containment.latency_seconds }}s after detection (by the Sensor); the workflow finished at {{ "%.0f"|format(timing | sum(attribute=1)) }}s{% else %}detection to containment, {{ "%.0f"|format(timing | sum(attribute=1)) }}s in total{% endif %}</span></summary>
+    <summary><span>Where the time went</span><span class="faint">{% if case.containment.get("fast") %}quarantined {{ case.time_to_contain_label }} after detection (by the Sensor); the workflow finished at {{ "%.0f"|format(timing | sum(attribute=1)) }}s{% else %}detection to containment, {{ "%.0f"|format(timing | sum(attribute=1)) }}s in total{% endif %}</span></summary>
     <section>
       <table>
         <tbody>{% for label, seconds, covers in timing %}

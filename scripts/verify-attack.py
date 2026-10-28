@@ -184,10 +184,11 @@ def evaluate(
             elif case["contain"].get("dry_run"):
                 out.append(("WARN", "response mode is dry-run: the pod would have been quarantined"))
             elif latency is not None:
+                took = "under 1" if case["contain"].get("fast") and latency < 1 else latency
                 out.append(
                     (
                         "PASS",
-                        f"quarantined {latency}s after detection"
+                        f"quarantined {took}s after detection"
                         + (", detached from its controller" if case["contain"].get("orphaned") else ""),
                     )
                 )
