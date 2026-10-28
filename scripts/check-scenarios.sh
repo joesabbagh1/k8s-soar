@@ -13,6 +13,8 @@ for dir in "${ROOT}"/scenarios/[0-9][0-9]-*/; do
   [[ -f "${dir}README.md" ]] || { echo "FAIL ${name}: README.md missing"; fail=1; }
   [[ -x "${dir}run.sh" ]] || { echo "FAIL ${name}: run.sh missing or not executable"; fail=1; }
   [[ -f "${dir}README.md" ]] || continue
+  # The backticks are literal: README rule names are written as `K8sSoar ...`.
+  # shellcheck disable=SC2016
   while IFS= read -r rule; do
     if ! grep -rqF -- "- rule: ${rule}" "$RULES"; then
       echo "FAIL ${name}: README names '${rule}', which is not a Falco rule"
