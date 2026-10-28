@@ -179,13 +179,16 @@ ai:
   # for bedrock, AZURE_API_VERSION for azure).
   extraEnv: []
   maxToolCalls: 8
-  maxTokens: 2048
-  timeoutSeconds: 60          # per model call
+  maxTokens: 4096             # includes thinking tokens on Gemini 3
+  timeoutSeconds: 120         # per model call (thinking models can be slow)
+  # Empty = provider default. Gemini/Vertex default to low thinking for triage.
+  reasoningEffort: ""         # low | medium | high
+  temperature: ""             # empty = provider default (Gemini 3 needs 1.0)
   # Overloaded/rate-limited/flaky provider (429, 5xx, timeouts): retry with
   # exponential backoff (2s, 4s, 8s, 16s...), then try fallbackModel (same
   # provider, e.g. a lighter model). Everything stays within budgetSeconds per case.
   maxRetries: 4
-  budgetSeconds: 240
+  budgetSeconds: 360
   fallbackModel: ""
   # Allow the agent to read pod logs (they are sent to the model provider).
   sendLogs: true

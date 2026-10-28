@@ -97,6 +97,10 @@ spec:
               value: {{ .Values.ai.maxTokens | quote }}
             - name: AI_TIMEOUT_SECONDS
               value: {{ .Values.ai.timeoutSeconds | quote }}
+            - name: AI_REASONING_EFFORT
+              value: {{ .Values.ai.reasoningEffort | quote }}
+            - name: AI_TEMPERATURE
+              value: {{ .Values.ai.temperature | quote }}
             - name: AI_MAX_RETRIES
               value: {{ .Values.ai.maxRetries | quote }}
             - name: AI_BUDGET_SECONDS
@@ -113,6 +117,11 @@ spec:
                   optional: true   # e.g. Ollama needs no key
             - name: HOME
               value: /tmp
+            # LiteLLM: log warnings only; use the bundled model price map (no download at start).
+            - name: LITELLM_LOG
+              value: WARNING
+            - name: LITELLM_LOCAL_MODEL_COST_MAP
+              value: "True"
             {{- with .Values.ai.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

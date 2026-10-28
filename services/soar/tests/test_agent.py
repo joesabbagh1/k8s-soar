@@ -190,3 +190,17 @@ def test_budget_stops_retrying(alert, kube_fake, settings):
     with pytest.raises(ProviderError):
         run_triage(alert, {}, {}, _tools(kube_fake, settings), cfg, completion=llm, sleep=lambda s: None)
     assert len(llm.calls) < 10  # the 8s+ backoffs would overrun a 5s budget
+
+
+def test_call_kwargs_follow_provider(alert, kube_fake, settings):
+    llm = ScriptedLLM([_submit()])
+    gemini = AgentSettings(provider="gemini", model="g", api_key="k")
+    run_triage(alert, {}, {}, _tools(kube_fake, settings), gemini, completion=llm)
+    assert "temperature" not in llm.calls[0]  # provider default; Gemini 3 degrades below 1.0
+    assert llm.calls[0]["reasoning_effort"] == "low" and llm.calls[0]["drop_params"] is True
+    assert llm.calls[0]["timeout"] <= 120
+
+    llm = ScriptedLLM([_submit()])
+    claude = AgentSettings(provider="anthropic", model="c", api_key="k", temperature=0.2)
+    run_triage(alert, {}, {}, _tools(kube_fake, settings), claude, completion=llm)
+    assert llm.calls[0]["temperature"] == 0.2 and "reasoning_effort" not in llm.calls[0]

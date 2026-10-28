@@ -79,7 +79,11 @@ Verdict schema (`services/soar/src/k8s_soar/verdict.py`):
   connection errors), the call is retried up to `ai.maxRetries` times with exponential backoff
   (2s, 4s, 8s, 16s with jitter). After that, `ai.fallbackModel` is tried if you set one, for
   example a lighter model from the same provider. All of this stays within `ai.budgetSeconds`
-  (default 240) per case, and the triage step waits for that budget plus a margin. A wrong key or
+  (default 360) per case, and the triage step waits for that budget plus a margin. Each call
+  may take up to `ai.timeoutSeconds` (default 120s), because thinking models are slow.
+- **Model tuning.** k8s-soar doesn't send a temperature (set `ai.temperature` to override).
+  Gemini 3 degrades below 1.0. On Gemini/Vertex, triage uses low thinking effort for speed
+  (`ai.reasoningEffort: low|medium|high` changes it for any provider that supports it). A wrong key or
   model is not retried, so it shows up immediately as "unavailable: model …".
 - **Cost and latency bounds.** `maxToolCalls` (default 8), `maxTokens` per call, `timeoutSeconds`.
   On the last allowed call the model is forced to submit a verdict.

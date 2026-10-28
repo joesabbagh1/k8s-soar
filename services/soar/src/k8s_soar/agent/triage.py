@@ -154,10 +154,14 @@ def run_triage(
     call_kwargs: dict[str, Any] = {
         "model": settings.litellm_model,
         "max_tokens": settings.max_tokens,
-        "temperature": settings.temperature,
         "timeout": settings.timeout_seconds,
         "tools": TOOL_SPECS,
     }
+    if settings.temperature is not None:
+        call_kwargs["temperature"] = settings.temperature
+    if settings.effective_reasoning_effort:
+        call_kwargs["reasoning_effort"] = settings.effective_reasoning_effort
+        call_kwargs["drop_params"] = True  # ignored by models without a thinking setting
     if settings.api_key:
         call_kwargs["api_key"] = settings.api_key
     if settings.base_url:

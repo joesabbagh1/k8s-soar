@@ -17,19 +17,29 @@ class AgentSettings(BaseModel):
     api_key: str = ""
     base_url: str = ""
     max_tool_calls: int = 8
-    max_tokens: int = 2048
-    timeout_seconds: float = 60.0
+    max_tokens: int = 4096
+    timeout_seconds: float = 120.0
     # Transient provider errors (429, 5xx, timeouts) are retried with backoff,
     # all within budget_seconds per case; then fallback_model is tried, if set.
     max_retries: int = 4
-    budget_seconds: float = 240.0
+    budget_seconds: float = 360.0
     fallback_model: str = ""
-    temperature: float = 0.0
+    # None = provider default. Gemini 3 degrades (and can loop) below 1.0.
+    temperature: float | None = None
+    # "" = provider default, except Gemini/Vertex where triage uses "low" thinking
+    # (much faster, plenty for triage). low | medium | high.
+    reasoning_effort: str = ""
     send_logs: bool = True
 
     @property
     def litellm_model(self) -> str:
         return self._litellm(self.model)
+
+    @property
+    def effective_reasoning_effort(self) -> str:
+        if self.reasoning_effort:
+            return self.reasoning_effort
+        return "low" if self.provider in ("gemini", "vertex_ai") else ""
 
     @property
     def litellm_fallback(self) -> str:
@@ -68,10 +78,12 @@ def agent_settings() -> AgentSettings:
         api_key=env("AI_API_KEY", "").strip(),
         base_url=env("AI_BASE_URL", "").strip(),
         max_tool_calls=int(env("AI_MAX_TOOL_CALLS", "8")),
-        max_tokens=int(env("AI_MAX_TOKENS", "2048")),
-        timeout_seconds=float(env("AI_TIMEOUT_SECONDS", "60")),
+        max_tokens=int(env("AI_MAX_TOKENS", "4096")),
+        timeout_seconds=float(env("AI_TIMEOUT_SECONDS", "120")),
+        temperature=float(env("AI_TEMPERATURE")) if env("AI_TEMPERATURE", "").strip() else None,
+        reasoning_effort=env("AI_REASONING_EFFORT", "").strip().lower(),
         max_retries=int(env("AI_MAX_RETRIES", "4")),
-        budget_seconds=float(env("AI_BUDGET_SECONDS", "240")),
+        budget_seconds=float(env("AI_BUDGET_SECONDS", "360")),
         fallback_model=env("AI_FALLBACK_MODEL", "").strip(),
         send_logs=env("AI_SEND_LOGS", "true").lower() == "true",
     )
