@@ -40,11 +40,28 @@ def _selector_keys(k: Kube, namespace: str, kind: str, name: str) -> set[str]:
     return keys
 
 
+FAST_ANNOTATION = "soar-fast-quarantined-at"  # set by the Sensor's fast path (no dots: it is a patch parameter)
+
+
+def _fast_quarantine_time(pod) -> datetime | None:
+    value = (pod.metadata.annotations or {}).get(FAST_ANNOTATION)
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def contain(alert: Alert, k: Kube, settings: Settings, case_id: str) -> dict[str, Any]:
     now = datetime.now(UTC)
-    latency = max((now - alert.time).total_seconds(), 0.0)
     pod = k.core.read_namespaced_pod(alert.pod, alert.namespace)
     labels = pod.metadata.labels or {}
+    # When the Sensor already labelled the pod, containment happened then; this step only finishes the job
+    # (case label, detaching the pod from its controller).
+    fast_at = _fast_quarantine_time(pod)
+    landed = fast_at or now
+    latency = max((landed - alert.time).total_seconds(), 0.0)
     chain = owner_chain(k, alert.namespace, pod)
 
     removed: dict[str, str] = {}
@@ -62,7 +79,7 @@ def contain(alert: Alert, k: Kube, settings: Settings, case_id: str) -> dict[str
     }
     patch_labels.update(dict.fromkeys(removed))  # None removes the label
     annotations = {
-        "k8s-soar.io/quarantined-at": now.isoformat(),
+        "k8s-soar.io/quarantined-at": landed.isoformat(),
         "k8s-soar.io/quarantine-rule": alert.rule,
         OWNER_ANNOTATION: chain[-1] if chain else "",
     }
@@ -75,6 +92,7 @@ def contain(alert: Alert, k: Kube, settings: Settings, case_id: str) -> dict[str
         "orphaned": bool(removed),
         "removed_labels": sorted(removed),
         "latency_seconds": round(latency, 3),
+        "fast": fast_at is not None,
         "dry_run": settings.dry_run,
     }
     if settings.dry_run:

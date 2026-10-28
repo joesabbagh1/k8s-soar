@@ -714,6 +714,14 @@ class Case:
                 owners = ", ".join(c.get("owners") or ["its controller"])
                 detail += f" Detached from {owners}; a clean replacement is scheduled."
             title = "Would quarantine the pod (dry-run)" if c.get("dry_run") else "Pod quarantined and network-isolated"
+            if c.get("fast") and not c.get("dry_run"):
+                title = "Pod quarantined by the Sensor"
+                detail = f"{c['latency_seconds']}s after detection, before the workflow started." + (
+                    f" The workflow then detached it from {', '.join(c.get('owners') or ['its controller'])}; "
+                    "a clean replacement is scheduled."
+                    if c.get("orphaned")
+                    else ""
+                )
             events.append(Event(contain.finished, title, detail, "warn" if c.get("dry_run") else "good", "contain"))
         elif contain and "error" in c:
             events.append(Event(contain.finished, "Containment failed", str(c["error"]), "bad", "contain"))

@@ -50,9 +50,34 @@ def test_guard_retries_on_conflict(alert, kube_fake, settings):
     assert guard.decide(alert, kube_fake, settings).action == guard.CONTAIN
 
 
-def test_guard_skips_quarantined(alert, kube_fake, settings):
-    kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels["security.quarantine"] = "true"
+def test_guard_skips_a_pod_quarantined_by_an_open_case(alert, kube_fake, settings):
+    labels = kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels
+    labels.update({"security.quarantine": "true", "k8s-soar.io/case": "case-1"})
     assert guard.decide(alert, kube_fake, settings).action == guard.SKIP
+
+
+def test_guard_carries_on_for_a_pod_the_sensor_already_quarantined(alert, kube_fake, settings):
+    # The fast path labels the pod but no case owns it yet: the workflow must still do the job.
+    kube_fake.core.pods[("shop", "web-5d9c-abcde")].metadata.labels["security.quarantine"] = "true"
+    assert guard.decide(alert, kube_fake, settings).action == guard.CONTAIN
+    assert guard.decide(alert, kube_fake, settings).action == guard.SKIP  # a second containment rule is a duplicate
+
+
+def test_contain_reports_the_time_the_sensor_quarantined_the_pod(alert, kube_fake, settings):
+    pod = kube_fake.core.pods[("shop", "web-5d9c-abcde")]
+    pod.metadata.labels["security.quarantine"] = "true"
+    alert.time = datetime.now(UTC) - timedelta(seconds=30)
+    pod.metadata.annotations = {contain.FAST_ANNOTATION: (alert.time + timedelta(seconds=1.4)).isoformat()}
+    result = contain.contain(alert, kube_fake, settings, "case-1")
+    assert result["fast"] is True and result["latency_seconds"] == pytest.approx(1.4, abs=0.01)  # not 30 s
+    assert result["orphaned"]  # the workflow still detaches the pod from its controller
+    assert pod.metadata.labels["k8s-soar.io/case"] == "case-1"
+
+
+def test_contain_without_the_fast_path_measures_its_own_time(alert, kube_fake, settings):
+    alert.time = datetime.now(UTC) - timedelta(seconds=9)
+    result = contain.contain(alert, kube_fake, settings, "case-1")
+    assert result["fast"] is False and result["latency_seconds"] == pytest.approx(9, abs=1)
 
 
 def test_guard_never_contains_trusted_namespace(alert, kube_fake, settings):

@@ -85,6 +85,14 @@ else
   bad "webhook service missing — Falco alerts cannot reach the response pipeline"
 fi
 sensor_pods=$(kubectl get pods -n "$SOAR_NS" -l sensor-name=soar-router --no-headers 2>/dev/null | grep -c Running || true)
+if kubectl get sensor -n "$SOAR_NS" soar-fast >/dev/null 2>&1; then
+  fast_pods=$(kubectl get pods -n "$SOAR_NS" -l sensor-name=soar-fast --no-headers 2>/dev/null | grep -c Running || true)
+  if [[ "$fast_pods" -gt 0 ]]; then
+    ok "fast quarantine sensor running"
+  else
+    warning "fast quarantine sensor soar-fast is not running; cases still work, containment is just slower (kubectl describe sensor -n $SOAR_NS soar-fast)"
+  fi
+fi
 if [[ "$sensor_pods" -gt 0 ]]; then
   ok "sensor running"
 else

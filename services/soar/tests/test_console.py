@@ -727,3 +727,24 @@ def test_the_case_page_shows_what_the_triage_cost(client):
     fake.workflows["free"] = workflow(verdict=shared, name="free")
     assert "3 model calls, 12,345 tokens" in http.get("/cases/paid").text
     assert "shared with another alert on this pod, no extra cost" in http.get("/cases/free").text
+
+
+def test_a_fast_quarantine_is_reported_as_the_sensors(client):
+    http, fake = client
+    wf = merged_workflow()
+    wf["status"]["nodes"]["r"]["outputs"]["parameters"] = [
+        p
+        if p["name"] != "contained"
+        else {
+            "name": "contained",
+            "value": json.dumps({"latency_seconds": 1.4, "orphaned": True, "owners": ["Deployment/web"], "fast": True}),
+        }
+        for p in wf["status"]["nodes"]["r"]["outputs"]["parameters"]
+    ]
+    fake.workflows.clear()
+    fake.workflows[wf["metadata"]["name"]] = wf
+    case = cases.from_workflow(wf)
+    assert case.time_to_contain == 1.4
+    assert any(e.title == "Pod quarantined by the Sensor" and "1.4s after detection" in e.detail for e in case.timeline)
+    page = http.get(f"/cases/{wf['metadata']['name']}").text
+    assert "quarantined 1.4s after detection (by the Sensor)" in page

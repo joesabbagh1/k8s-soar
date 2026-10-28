@@ -94,6 +94,11 @@ response:
   # notify    never modify workloads, only notify
   # dry-run   run the whole pipeline, log what would be done
   mode: contain
+  # Quarantine from the Sensor the moment a containment rule fires (about 1-2 s after the alert)
+  # instead of waiting for a workflow pod to start (6+ s); the workflow still finishes the job.
+  # Only in mode `contain`. The Sensor may get/patch pods, nothing else.
+  fastQuarantine:
+    enabled: true
   # Detach the quarantined pod from its ReplicaSet/DaemonSet/Job so a clean
   # replacement is scheduled and the compromised pod is kept for forensics.
   orphanFromController: true

@@ -136,12 +136,25 @@ a new kind of action, add a subcommand to `services/soar/src/k8s_soar/actions/`,
 
 ## How fast is containment?
 
-Containment time runs from Falco's event to the label landing on the pod. Falco to the workflow takes
-about a second; after that every workflow step is a pod, and a pod start costs several seconds, so
-the **first** step is what sets the time: route and quarantine run together in one step (`respond`)
-for exactly that reason. The `soar-image-prepull` DaemonSet keeps the actions image on every node so
-the first case after an update does not wait for an image pull (`response.actions.prepull`).
+Containment time runs from Falco's event to the label landing on the pod.
 
-The **Technical** tab of every case shows *Where the time went*. Expect roughly 5-10 seconds on a lab
-box. To go lower still, an always-on responder would have to label the pod itself instead of a
-workflow pod; k8s-soar does not ship one because it needs its own permission to label pods.
+- **Fast path (default in `contain` mode):** the Sensor `soar-fast` labels the pod itself the moment a
+  `soar_contain` rule fires, about **1-2 seconds** after the alert. No pod has to start. The workflow
+  still runs and finishes the job: it adds the case label, detaches the pod from its controller,
+  collects evidence, asks the AI and waits for the decision. Cases on a fast-quarantined pod show
+  "Pod quarantined by the Sensor" and the real time to contain.
+- **Workflow path:** every workflow step is a pod, and a pod start costs several seconds, so route and
+  quarantine run together in one step (`respond`): about **8-9 seconds**. This is what happens with
+  `response.fastQuarantine.enabled: false`, and it is the fallback if the fast Sensor is not running.
+  The `soar-image-prepull` DaemonSet keeps the actions image on every node so the first case after an
+  update does not wait for an image pull (`response.actions.prepull`).
+
+**What the fast path may do:** its Sensor uses its own ServiceAccount (`soar-fast`) that can only
+`get` and `patch` pods: no delete, no scale. It only acts on events tagged `soar_contain` that
+carry a pod, never in platform namespaces (excluded in the Sensor's filter and again by the Kyverno
+policy `k8s-soar-responder-scope`), and it is not rendered at all in `notify` or `dry-run` mode,
+because those must never change a workload. It is a separate Sensor so a mistake there cannot stop
+`soar-router` from opening cases. If it is not running, `make status` warns and containment falls back
+to the workflow path.
+
+The **Technical** tab of every case shows *Where the time went*.

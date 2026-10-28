@@ -1,0 +1,112 @@
+{{- if and .Values.response.enabled .Values.response.fastQuarantine.enabled (eq .Values.response.mode "contain") }}
+# Fast quarantine. Starting a workflow pod costs several seconds, so the Sensor itself labels the
+# pod the moment a containment rule fires (about a second after the alert). The workflow
+# (events.yaml) then finishes the job: case label, detaching the pod from its controller,
+# evidence, AI triage, decision.
+#
+# It is a separate Sensor on purpose: if anything here is wrong, only the fast path stops and the
+# case pipeline in soar-router is unaffected. It only exists in `contain` mode, because it changes
+# workloads (notify and dry-run must never touch them).
+#
+# Safety: its own ServiceAccount may only get/patch pods (no delete, no scale); the event must be
+# tagged soar_contain and carry a pod; platform namespaces are excluded by the filter below and
+# again by the Kyverno policy k8s-soar-responder-scope.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: soar-fast
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: k8s-soar-fast-quarantine
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: k8s-soar-fast-quarantine
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: k8s-soar-fast-quarantine
+subjects:
+  - kind: ServiceAccount
+    name: soar-fast
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: soar-fast
+  labels:
+    {{- include "k8s-soar.labels" . | nindent 4 }}
+spec:
+  eventBusName: soar
+  template:
+    serviceAccountName: soar-fast
+  dependencies:
+    - name: falco-contain
+      eventSourceName: {{ include "k8s-soar.eventSource" . }}
+      eventName: falco
+      filters:
+        data:
+          - path: body.tags
+            type: string
+            value:
+              - '.*"soar_contain".*'
+        exprs:
+          # A pod, and not a platform namespace.
+          - expr: >-
+              ns != "" && pod != ""
+              {{- range .Values.trustedNamespaces }} && ns != {{ . | quote }}{{ end }}
+            fields:
+              - name: ns
+                path: body.output_fields.k8s\.ns\.name
+              - name: pod
+                path: body.output_fields.k8s\.pod\.name
+  triggers:
+    - template:
+        name: quarantine-pod
+        conditions: falco-contain
+        k8s:
+          operation: patch
+          patchStrategy: application/merge-patch+json
+          source:
+            resource:
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                name: replaced-by-parameter
+                namespace: replaced-by-parameter
+                labels:
+                  {{ .Values.quarantine.labelKey }}: {{ .Values.quarantine.labelValue | quote }}
+                annotations:
+                  soar-fast-quarantined-at: replaced-by-parameter
+          parameters:
+            - src:
+                dependencyName: falco-contain
+                dataKey: body.output_fields.k8s\.pod\.name
+              dest: metadata.name
+            - src:
+                dependencyName: falco-contain
+                dataKey: body.output_fields.k8s\.ns\.name
+              dest: metadata.namespace
+            # When the event reached us: the workflow reports the real time to contain from it.
+            - src:
+                dependencyName: falco-contain
+                contextKey: time
+              dest: metadata.annotations.soar-fast-quarantined-at
+      retryStrategy:
+        steps: 2
+        duration: 1s
+{{- end }}

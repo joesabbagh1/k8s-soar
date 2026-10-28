@@ -45,9 +45,17 @@ def _wanted_action(alert: Alert, settings: Settings) -> Decision | None:
     return None  # needs the pod to be checked and claimed
 
 
+CASE_LABEL = "k8s-soar.io/case"
+
+
 def _is_quarantined(pod, settings: Settings) -> bool:
+    """Quarantined by a case that is already open.
+
+    A pod labelled by the Sensor's fast path (see events-fast.yaml) has the quarantine label but no
+    case label yet: no case owns it, so the workflow must carry on and finish the job.
+    """
     labels = pod.metadata.labels or {}
-    return labels.get(settings.quarantine_label_key) == settings.quarantine_label_value
+    return labels.get(settings.quarantine_label_key) == settings.quarantine_label_value and CASE_LABEL in labels
 
 
 def decide(alert: Alert, k: Kube, settings: Settings, now: datetime | None = None) -> Decision:

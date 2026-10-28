@@ -327,7 +327,7 @@
   {% set timing = case.timing %}
   {% if timing %}
   <details class="card fold" open data-fold="timing">
-    <summary><span>Where the time went</span><span class="faint">detection to containment, {{ "%.0f"|format(timing | sum(attribute=1)) }}s in total</span></summary>
+    <summary><span>Where the time went</span><span class="faint">{% if case.containment.get("fast") %}quarantined {{ case.containment.latency_seconds }}s after detection (by the Sensor); the workflow finished at {{ "%.0f"|format(timing | sum(attribute=1)) }}s{% else %}detection to containment, {{ "%.0f"|format(timing | sum(attribute=1)) }}s in total{% endif %}</span></summary>
     <section>
       <table>
         <tbody>{% for label, seconds, covers in timing %}

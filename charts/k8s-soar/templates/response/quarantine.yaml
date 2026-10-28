@@ -83,8 +83,8 @@ spec:
                 value: {{ .Values.quarantine.labelValue | quote }}
 {{- end }}
 ---
-# Defense in depth: the responder must never touch platform namespaces, even if
-# its code or RBAC is wrong.
+# Defense in depth: the responder, and the Sensor's fast-quarantine service account, must never
+# touch platform namespaces, even if their code or RBAC is wrong.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -106,8 +106,17 @@ spec:
               - kind: ServiceAccount
                 name: {{ include "k8s-soar.responderSA" . }}
                 namespace: {{ .Release.Namespace }}
+          - resources:
+              kinds: [Pod]
+              operations: [UPDATE]
+              namespaces:
+                {{- toYaml .Values.trustedNamespaces | nindent 16 }}
+            subjects:
+              - kind: ServiceAccount
+                name: soar-fast
+                namespace: {{ .Release.Namespace }}
       validate:
         failureAction: Enforce
-        message: "k8s-soar responder may not modify workloads in trusted namespaces."
+        message: "k8s-soar may not modify workloads in trusted namespaces."
         deny: {}
 {{- end }}
