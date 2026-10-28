@@ -11,7 +11,7 @@ From a compromised container, an adversary uses shell built-ins to open an **out
 | Step | Layer | What happens |
 |------|-------|--------------|
 | 1. **Attack** | Adversary | From a shell inside a pod in the **`security-lab`** namespace, an outbound TCP connection is attempted to `10.255.255.1:4444` via `/dev/tcp` (reverse-shell staging). |
-| 2. **Detection** | Falco | Rule `K8sSoar Reverse Shell Outbound` matches shell process + outbound connection. |
+| 2. **Detection** | Falco | Rule `K8sSoar Shell Outbound Connection` matches shell process + outbound connection. |
 | 3. **Observability** | Tetragon | TracingPolicy `k8s-soar-detect-reverse-shell` records `tcp_connect` events (Post action) on labeled pods. |
 | 4. **Triage** | falcosidekick | Critical/Warning alert sent to SOAR webhook. |
 | 5. **Response** | SOAR responder | Source pod quarantined via `security.quarantine=true`. |
@@ -27,7 +27,7 @@ From a compromised container, an adversary uses shell built-ins to open an **out
 
 | Tool | Expected |
 |------|----------|
-| Falco | `K8sSoar Reverse Shell Outbound` |
+| Falco | `K8sSoar Shell Outbound Connection` |
 | Tetragon | `tcp_connect` event for scenario pod (see Tetragon logs / `kubectl get tracingpolicy`) |
 | falcosidekick | Webhook POST success |
 | SOAR responder | Quarantine label applied to scenario pod |
@@ -35,6 +35,6 @@ From a compromised container, an adversary uses shell built-ins to open an **out
 ## Capture
 
 ```bash
-../../scripts/lab/capture-scenario-evidence.sh 3m 'K8sSoar Reverse Shell Outbound'
+../../scripts/lab/capture-scenario-evidence.sh 3m 'K8sSoar Shell Outbound Connection'
 kubectl get tracingpolicy k8s-soar-detect-reverse-shell
 ```

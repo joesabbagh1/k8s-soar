@@ -11,7 +11,7 @@ From inside a running pod, an adversary reads the automatically mounted Kubernet
 | Step | Layer | What happens |
 |------|-------|--------------|
 | 1. **Attack** | Adversary | From a pod in the **`security-lab`** namespace, `cat` reads the mounted service account token at `/var/run/secrets/kubernetes.io/serviceaccount/token`. |
-| 2. **Detection** | Falco | Rule `K8sSoar Sensitive Credential Access` fires on `open_read` of the token path. |
+| 2. **Detection** | Falco | Rule `K8sSoar Service Account Token Read By Shell Tool` fires on `open_read` of the token path. |
 | 3. **Triage** | falcosidekick | Alert forwarded to the SOAR webhook. |
 | 4. **Response** | SOAR responder | Offending pod is labeled `security.quarantine=true`. |
 | 5. **Containment** | Network policy | Quarantined pod loses network connectivity. |
@@ -27,7 +27,7 @@ From inside a running pod, an adversary reads the automatically mounted Kubernet
 
 | Tool | Expected |
 |------|----------|
-| Falco | `K8sSoar Sensitive Credential Access` with `fd.name` under `.../serviceaccount` |
+| Falco | `K8sSoar Service Account Token Read By Shell Tool` with `fd.name` under `.../serviceaccount` |
 | falcosidekick | Webhook POST success |
 | SOAR responder | `quarantined pod security-lab/scenario-03-token` |
 | Kyverno | Audit hit on `k8s-soar-restrict-sa-automount` (background scan) |
@@ -35,6 +35,6 @@ From inside a running pod, an adversary reads the automatically mounted Kubernet
 ## Capture
 
 ```bash
-../../scripts/lab/capture-scenario-evidence.sh 3m 'K8sSoar Sensitive Credential Access'
+../../scripts/lab/capture-scenario-evidence.sh 3m 'K8sSoar Service Account Token Read By Shell Tool'
 kubectl get policyreport -A | grep -i automount
 ```

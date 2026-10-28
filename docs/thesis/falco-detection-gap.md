@@ -1,3 +1,7 @@
+> **Historical (thesis, v1).** This describes a gap in the v1 custom rules (rule names such as
+> `Shell In Victim Container` no longer exist). The v2 rules are in
+> `charts/k8s-soar/files/falco-rules/` and are documented in `docs/detection-catalog.md`.
+
 # Stage 1 — Shell In Victim Container: Detection Gap
 
 ## Summary

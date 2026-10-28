@@ -58,6 +58,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: shellcheck -x scripts/*.sh scripts/lab/*.sh deploy/ansible/*.sh deploy/ansible/lib/*.sh k8s-soar
+      # The attack scenarios are lab scripts: report findings without failing the build.
+      - run: shellcheck -x -S warning scenarios/*/run.sh scenarios/run-all.sh
+        continue-on-error: true
+      - run: ./scripts/check-scenarios.sh
 
   manifests:
     name: Chart + helmfile render, schema validation
