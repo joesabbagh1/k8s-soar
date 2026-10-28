@@ -142,11 +142,20 @@ def case_list(request: Request, show: str = "open") -> HTMLResponse:
         all_cases = _load_cases_cached()
     except ArgoError as exc:
         error = str(exc)
-    counts = {key: sum(1 for c in all_cases if c.status in statuses) for key, statuses in FILTERS.items()}
-    counts["awaiting"] = sum(1 for c in all_cases if c.awaiting)
-    visible = [c for c in all_cases if c.status in FILTERS[show]]
+    related, attached = cases.attach_related(all_cases)
+    listed = [c for c in all_cases if c.name not in attached]
+    counts = {key: sum(1 for c in listed if c.status in statuses) for key, statuses in FILTERS.items()}
+    counts["awaiting"] = sum(1 for c in listed if c.awaiting)
+    visible = [c for c in listed if c.status in FILTERS[show]]
     return _page(
-        request, "cases.html", cases=visible, show=show, counts=counts, error=error, awaiting_count=counts["awaiting"]
+        request,
+        "cases.html",
+        cases=visible,
+        show=show,
+        counts=counts,
+        error=error,
+        awaiting_count=counts["awaiting"],
+        related_counts={name: len(items) for name, items in related.items()},
     )
 
 
@@ -165,6 +174,10 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
     )
     dashboard = grafana.dashboard_url(base, "k8s-soar-response", at) if at else ""
     raw_alert = json.dumps(case.alert.model_dump(mode="json"), indent=2) if case.alert else ""
+    try:
+        related = cases.attach_related(_load_cases_cached())[0].get(case.name, [])
+    except ArgoError:
+        related = []
     return _page(
         request,
         "case.html",
@@ -173,6 +186,7 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
         dashboard=dashboard,
         grafana_base=base,
         raw_alert=raw_alert,
+        related=related,
         decided=decided,
     )
 

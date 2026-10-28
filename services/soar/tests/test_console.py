@@ -376,3 +376,22 @@ def test_progress_shows_the_running_step():
     assert case.current.key == "triage" and "investigating" in case.current.detail
     states = {row.key: row.state for row in case.progress}
     assert states["contain"] == "done" and states["decide"] == "pending" and states["follow-up"] == "pending"
+
+
+def test_skipped_alerts_attach_to_the_open_case(client):
+    http, fake = client
+    later = workflow(approve=None, phase="Succeeded", name="k8ssoar-api-server-access-q1")
+    later["metadata"]["creationTimestamp"] = "2026-10-26T10:05:00Z"
+    later["status"]["nodes"] = {
+        "g": _node(
+            "guard",
+            decision=json.dumps({"action": "skip", "reason": "pod is already quarantined; case already open"}),
+            action="skip",
+        )
+    }
+    fake.workflows[later["metadata"]["name"]] = later
+    listed = http.get("/?show=all").text
+    assert "k8ssoar-api-server-access-q1" not in listed  # not its own row
+    assert "+1 more alert" in listed
+    page = http.get("/cases/k8ssoar-reverse-shell-abcde").text
+    assert "More activity on this pod" in page and "k8ssoar-api-server-access-q1" in page

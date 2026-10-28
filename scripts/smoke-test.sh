@@ -107,11 +107,23 @@ owner=$(kubectl get pod -n "$NS" "$POD" -o jsonpath='{.metadata.ownerReferences[
 [[ -z "$owner" ]] && pass "pod detached from its ReplicaSet" || echo "WARN pod still owned by ${owner}"
 
 step "4. Network isolation"
-sleep 5
-if kubectl exec -n "$NS" "$POD" -- wget -q -T 3 -O /dev/null http://kubernetes.default.svc 2>/dev/null; then
-  fail "quarantined pod can still reach the network"
+# Probe an in-cluster HTTP endpoint that no detection rule watches (querying the
+# Kubernetes API from a shell would rightly trigger "API Server Access From Shell Tool").
+PROBE_URL=""
+if kubectl get svc -n "$SOAR_NS" soar-console >/dev/null 2>&1; then
+  PROBE_URL="http://soar-console.${SOAR_NS}.svc.cluster.local:8080/healthz"
+elif kubectl get svc -n monitoring kube-prometheus-stack-grafana >/dev/null 2>&1; then
+  PROBE_URL="http://kube-prometheus-stack-grafana.monitoring.svc.cluster.local/api/health"
 fi
-pass "egress blocked"
+if [[ -z "$PROBE_URL" ]]; then
+  echo "WARN no in-cluster HTTP endpoint to probe (console and Grafana disabled); skipping the isolation check"
+else
+  sleep 5
+  if kubectl exec -n "$NS" "$POD" -- wget -q -T 3 -O /dev/null "$PROBE_URL" 2>/dev/null; then
+    fail "quarantined pod can still reach ${PROBE_URL}"
+  fi
+  pass "egress blocked (${PROBE_URL%%/healthz*} unreachable from the quarantined pod)"
+fi
 sleep 15
 restarts=$(kubectl get pod -n "$NS" "$POD" -o jsonpath='{.status.containerStatuses[0].restartCount}')
 [[ "$restarts" == 0 ]] && pass "pod kept running (probes still pass, evidence preserved)" \
@@ -121,6 +133,14 @@ step "5. Replacement pod"
 wait_for 60 "replacement pod" \
   sh -c "kubectl get pods -n ${NS} -l app=victim --field-selector=status.phase=Running -o name | grep -v ${POD} | grep -q ."
 pass "a clean replacement pod is running"
+if [[ -n "$PROBE_URL" ]]; then
+  NEW_POD=$(kubectl get pods -n "$NS" -l app=victim --field-selector=status.phase=Running -o name | grep -v -m1 "$POD" || true)
+  if kubectl exec -n "$NS" "${NEW_POD#pod/}" -- wget -q -T 5 -O /dev/null "$PROBE_URL" 2>/dev/null; then
+    pass "the replacement reaches the same endpoint (the block comes from the quarantine)"
+  else
+    echo "WARN the replacement pod can't reach ${PROBE_URL} either; the isolation check proves less than it should"
+  fi
+fi
 
 echo
 phase=$(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase}')

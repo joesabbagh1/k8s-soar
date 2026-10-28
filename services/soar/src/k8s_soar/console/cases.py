@@ -716,6 +716,33 @@ def from_workflow(wf: dict[str, Any]) -> Case:
     )
 
 
+def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[str]]:
+    """Alerts skipped because their pod already had a case belong to that case.
+
+    Returns {parent case name: [related cases, oldest first]} and the names of the
+    attached cases (hidden from the case list; they are shown on their parent).
+    """
+    by_workload: dict[str, list[Case]] = {}
+    for case in all_cases:
+        by_workload.setdefault(case.workload, []).append(case)
+    related: dict[str, list[Case]] = {}
+    attached: set[str] = set()
+    for case in all_cases:
+        if case.status != SKIPPED or not case.alert or not case.alert.pod or not case.created:
+            continue
+        parents = [
+            p for p in by_workload[case.workload] if p.status != SKIPPED and p.created and p.created <= case.created
+        ]
+        if not parents:
+            continue
+        parent = max(parents, key=lambda p: p.created)
+        related.setdefault(parent.name, []).append(case)
+        attached.add(case.name)
+    for items in related.values():
+        items.sort(key=lambda c: c.created)
+    return related, attached
+
+
 def sort_key(case: Case) -> tuple[int, float]:
     order = [AWAITING, IN_PROGRESS, FAILED, CLOSED, SKIPPED]
     created = case.created.timestamp() if case.created else 0

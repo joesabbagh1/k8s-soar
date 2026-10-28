@@ -43,7 +43,7 @@
       <td>
         <div><span class="sev sev-{{ c.severity }}">{{ c.severity }}</span></div>
         <a class="title" href="/cases/{{ c.name }}">{{ c.title }}</a>
-        <div class="sub">{{ c.headline }}</div>
+        <div class="sub">{{ c.headline }}{% set more = related_counts.get(c.name, 0) %}{% if more %} <span class="tag warn" title="More alerts on this pod after the case opened">+{{ more }} more alert{{ "s" if more > 1 }}</span>{% endif %}</div>
       </td>
       <td><code>{{ c.workload }}</code>{% if c.pod_state %}<div style="margin-top:6px"><span class="tag {{ 'warn' if c.pod_state == 'quarantined' else '' }}">{{ c.pod_state }}</span></div>{% endif %}</td>
       <td>
