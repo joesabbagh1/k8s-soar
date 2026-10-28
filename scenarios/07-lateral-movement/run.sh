@@ -32,6 +32,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+diagnose_falco() {
+  echo "---- why Falco did not report ${ATTACKER} ----"
+  if kubectl get configmap -n falco k8s-soar-falco-rules -o jsonpath='{.data}' 2>/dev/null | grep -q 'Lateral Movement To Pod'; then
+    echo "The rule is in the Falco ConfigMap."
+  else
+    echo "The rule is not loaded. From this repo run: make deploy-soar"
+  fi
+  echo "Recent Falco log lines that mention rules or errors:"
+  kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --since=5m --tail=80 2>/dev/null \
+    | grep -iE 'error|invalid|Lateral Movement|scenario-07' | tail -20 \
+    || echo "    (no matching Falco log lines)"
+}
+
 wait_for() {
   local timeout=$1 what=$2
   shift 2
@@ -39,6 +52,9 @@ wait_for() {
     if "$@" >/dev/null 2>&1; then return 0; fi
     sleep 1
   done
+  if [[ "$what" == Falco* ]]; then
+    diagnose_falco
+  fi
   fail "timed out after ${timeout}s waiting for: ${what}"
 }
 

@@ -32,11 +32,10 @@
     compromised pod. DNS (port 53) is ignored.
   condition: >
     evt.type = connect and evt.dir = < and k8s_soar_workload
-    and (fd.typechar = 4 or fd.typechar = 6)
-    and fd.sport != 53
-    and fd.snet in (rfc_1918_addresses)
+    and (fd.typechar = 4 or fd.typechar = 6 or fd.type in (ipv4, ipv6))
+    and (not fd.sport exists or fd.sport != 53)
+    and (fd.sip in (k8s_soar_private_nets) or fd.snet in (k8s_soar_private_nets))
     and (evt.rawres >= 0 or evt.res = EINPROGRESS)
-    and proc.pname in (k8s_soar_shell_binaries)
     and (proc.name in (wget, curl) or proc.cmdline contains "wget" or proc.cmdline contains "curl")
   output: >
     Shell tool connected to a private address (lateral movement)

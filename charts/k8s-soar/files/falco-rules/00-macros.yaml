@@ -28,6 +28,11 @@
     - k8s-soar
     - local-path-storage
 
+# Private pod/service addresses. Inlined so the lateral-movement rule does not
+# depend on a stock list name. Quoting matches Falco's network literal syntax.
+- list: k8s_soar_private_nets
+  items: ['"10.0.0.0/8"', '"172.16.0.0/12"', '"192.168.0.0/16"']
+
 - list: k8s_soar_shell_binaries
   items: [ash, bash, csh, ksh, sh, tcsh, zsh, dash, busybox]
 
