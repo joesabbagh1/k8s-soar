@@ -121,7 +121,7 @@ DEMO_FILE := deploy/demo/shop.yaml
 demo-app: ## Install the demo customer app (web, API, db in namespace shop)
 	kubectl apply -f $(DEMO_FILE)
 	kubectl rollout status -n shop deploy/web deploy/api deploy/db --timeout=180s
-	@echo "Demo app ready: kubectl get pods -n shop. Aim a scenario at it with: make <attack> TARGET=demo"
+	@echo "Demo app ready: kubectl get pods -n shop. Scenarios that support it now target it automatically (TARGET=own to opt out)"
 
 demo-app-delete: ## Remove the demo app
 	kubectl delete -f $(DEMO_FILE) --ignore-not-found

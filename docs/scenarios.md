@@ -34,18 +34,25 @@ rule tags in `charts/k8s-soar/files/falco-rules/`. Scenarios whose README names 
 k8s-soar protects something that looks like a real workload. Nothing depends on it:
 `make demo-app-delete` removes it.
 
-To aim a scenario at it instead of its own pod, run with `TARGET=demo`
-(`make <attack> TARGET=demo`). A scenario opts in by asking the shared library for a target:
+Where an attack lands is the scenario's choice of target, and you control it with `TARGET`:
+
+| Command | Target |
+|---------|--------|
+| `make <attack>` | **Auto**: the demo app if it is installed and has a running pod of the tier the scenario wants, otherwise the scenario's own pod |
+| `make <attack> TARGET=demo` | The demo app, and fail with a hint if it isn't installed |
+| `make <attack> TARGET=own` | The scenario's own pod, even when the demo app exists |
+
+A scenario opts in by asking the shared library for a target before it creates its own pod:
 
 ```bash
 source scripts/lab/scenario-lib.sh
-if pod=$(scenario_demo_pod web); then
-  :   # TARGET=demo: use "$pod"; SCENARIO_NS is now "shop"
+if scenario_pick_target web; then
+  pod="$SCENARIO_TARGET_POD"     # a running demo pod; SCENARIO_NS is now "shop"
 else
-  :   # default: create the scenario's own pod, as before
+  :                              # no demo app (or TARGET=own): create the scenario's own pod, as before
 fi
 ```
 
-`scenario_demo_pod <web|api|db>` fails unless `TARGET=demo`, so existing scenarios behave exactly
-as before until they opt in. It also switches `SCENARIO_NS`, so `scenario_expect_case` and
-`scenario_expect_quarantine` look in the right namespace.
+Call it directly, not as `$(scenario_pick_target ...)`: command substitution runs in a subshell and
+would lose the namespace switch that `scenario_expect_case` and `scenario_expect_quarantine` need.
+Scenarios that don't ask keep using their own pods, so adopting this is one scenario at a time.

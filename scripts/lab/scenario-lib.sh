@@ -8,25 +8,46 @@ SCENARIO_LABEL_KEY="${SCENARIO_LABEL_KEY:-scenario}"
 SCENARIO_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SCENARIO_CASE=""
 
-# Optional target: the demo application (make demo-app) instead of the scenario's own pod.
-#   make <scenario> TARGET=demo   ->  SCENARIO_TARGET=demo
-# A scenario opts in with:
-#   if pod=$(scenario_demo_pod web); then <use "$pod" in ${SCENARIO_NS}>; else <create its own pod>; fi
-# scenario_demo_pod prints a running pod of the tier (web|api|db) and switches
-# SCENARIO_NS to the demo namespace, so the case and quarantine helpers below
-# look in the right place. It fails (and changes nothing) unless TARGET=demo.
+# Target: the demo application (make demo-app) or the scenario's own pod.
+#
+#   make <attack>               auto: use the demo app when it is installed, else the scenario's own pod
+#   make <attack> TARGET=demo   require the demo app (fail if it is not installed)
+#   make <attack> TARGET=own    never use the demo app
+#
+# A scenario asks the library for a target before creating its own pod:
+#
+#   if scenario_pick_target web; then
+#     pod="$SCENARIO_TARGET_POD"        # a running demo pod; SCENARIO_NS is now the demo namespace
+#   else
+#     pod=$(scenario_ensure_pod ...)    # the scenario's own pod, as before
+#   fi
+#
+# It must be called directly, not as $(scenario_pick_target ...): a subshell would
+# lose the SCENARIO_NS switch that the case and quarantine helpers below rely on.
 DEMO_NS="${DEMO_NS:-shop}"
-scenario_demo_pod() {
-  [[ "${SCENARIO_TARGET:-}" == "demo" ]] || return 1
-  local tier="$1" pod
+SCENARIO_TARGET_POD=""
+scenario_pick_target() {
+  local tier="$1" mode="${SCENARIO_TARGET:-auto}" pod=""
+  SCENARIO_TARGET_POD=""
+  [[ -n "$mode" ]] || mode=auto
+  case "$mode" in
+    own) return 1 ;;
+    auto | demo) ;;
+    *) echo "Unknown TARGET='${mode}' (use demo, own, or leave it unset)" >&2; exit 1 ;;
+  esac
   pod=$(kubectl get pod -n "$DEMO_NS" -l "app=${tier}" --field-selector=status.phase=Running \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
   if [[ -z "$pod" ]]; then
-    echo "TARGET=demo needs the demo app with a running '${tier}' pod. Install it with: make demo-app" >&2
-    exit 1
+    if [[ "$mode" == "demo" ]]; then
+      echo "TARGET=demo needs the demo app with a running '${tier}' pod. Install it with: make demo-app" >&2
+      exit 1
+    fi
+    return 1
   fi
   SCENARIO_NS="$DEMO_NS"
-  printf '%s' "$pod"
+  # shellcheck disable=SC2034  # read by the scenario scripts that source this library
+  SCENARIO_TARGET_POD="$pod"
+  echo ">>> Target: demo app, ${DEMO_NS}/${pod} (TARGET=own to use the scenario's own pod)"
 }
 
 # Remove pods for one scenario id (e.g. "01") and legacy fixed names.
