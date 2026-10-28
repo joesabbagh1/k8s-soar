@@ -1,0 +1,146 @@
+# A small three-tier "customer" application, so k8s-soar protects something that
+# looks like a real workload instead of throwaway lab pods.
+#
+#   web (nginx) ──► api (podinfo) ──► db (redis)
+#
+# Installed with `make demo-app`, removed with `make demo-app-delete`. It is not part
+# of the stack: nothing depends on it. Attack scenarios can target it with
+# `make <attack> TARGET=demo`.
+#
+# Deliberately ordinary, not hardened: the db has no resource limits and nothing
+# runs as non-root, which is what Kyverno's Audit policies report on a real customer.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    app.kubernetes.io/part-of: shop-demo
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: web, namespace: shop }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: api, namespace: shop }
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: db, namespace: shop }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: { app: web, tier: frontend }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web, tier: frontend }
+    spec:
+      serviceAccountName: web
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports: [{ containerPort: 80 }]
+          readinessProbe: { httpGet: { path: /, port: 80 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /, port: 80 }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop
+  labels: { app: api, tier: backend }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api, tier: backend }
+    spec:
+      serviceAccountName: api
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.1
+          ports: [{ containerPort: 9898 }]
+          env:
+            - { name: PODINFO_CACHE_SERVER, value: "tcp://db.shop.svc.cluster.local:6379" }
+          readinessProbe: { httpGet: { path: /readyz, port: 9898 }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /healthz, port: 9898 }, periodSeconds: 10 }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: shop
+  labels: { app: db, tier: data }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: db }
+  template:
+    metadata:
+      labels: { app: db, tier: data }
+    spec:
+      serviceAccountName: db
+      containers:
+        - name: redis
+          image: redis:7.4-alpine
+          ports: [{ containerPort: 6379 }]
+          # exec probes: they run inside the container, so they work whatever the network policy says
+          readinessProbe: { exec: { command: [redis-cli, ping] }, periodSeconds: 5 }
+          livenessProbe: { exec: { command: [redis-cli, ping] }, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: web, namespace: shop }
+spec:
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: api, namespace: shop }
+spec:
+  selector: { app: api }
+  ports: [{ port: 9898, targetPort: 9898 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: db, namespace: shop }
+spec:
+  selector: { app: db }
+  ports: [{ port: 6379, targetPort: 6379 }]
+---
+# Tiers only talk to the tier next to them, the way a reviewed application would.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: api-from-web, namespace: shop }
+spec:
+  podSelector: { matchLabels: { app: api } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: web } } }]
+      ports: [{ port: 9898 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: { name: db-from-api, namespace: shop }
+spec:
+  podSelector: { matchLabels: { app: db } }
+  policyTypes: [Ingress]
+  ingress:
+    - from: [{ podSelector: { matchLabels: { app: api } } }]
+      ports: [{ port: 6379 }]

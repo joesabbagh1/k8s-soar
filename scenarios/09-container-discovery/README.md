@@ -55,3 +55,9 @@ kubectl logs -n security-lab scenario-09-discovery
 ```bash
 kubectl describe pod -n security-lab scenario-09-discovery
 ```
+
+## Detection (k8s-soar v2)
+
+Falco rule `K8sSoar Container Discovery`. Details and known false positives are in
+[`docs/detection-catalog.md`](../../docs/detection-catalog.md). After running the scenario,
+`make verify-attack ATTACK=container-discovery` checks that a case was opened for it.

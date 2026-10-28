@@ -104,7 +104,7 @@ scenario_slug = $(patsubst $(firstword $(subst -, ,$(1)))-%,%,$(1))
 define scenario_rule
 .PHONY: $(call scenario_slug,$(1))
 $(call scenario_slug,$(1)):
-	./scenarios/$(1)/run.sh $$(ARGS)
+	SCENARIO_TARGET=$$(TARGET) ./scenarios/$(1)/run.sh $$(ARGS)
 ifneq ($(1),$(call scenario_slug,$(1)))
 .PHONY: $(1)
 $(1): $(call scenario_slug,$(1))
@@ -115,6 +115,20 @@ $(foreach dir,$(SCENARIO_DIRS),$(eval $(call scenario_rule,$(dir))))
 
 scenario-reset:
 	./scripts/lab/reset-scenario-lab.sh
+
+DEMO_FILE := deploy/demo/shop.yaml
+
+demo-app: ## Install the demo customer app (web, API, db in namespace shop)
+	kubectl apply -f $(DEMO_FILE)
+	kubectl rollout status -n shop deploy/web deploy/api deploy/db --timeout=180s
+	@echo "Demo app ready: kubectl get pods -n shop. Aim a scenario at it with: make <attack> TARGET=demo"
+
+demo-app-delete: ## Remove the demo app
+	kubectl delete -f $(DEMO_FILE) --ignore-not-found
+
+verify-attack: ## Check what k8s-soar did after an attack: make verify-attack ATTACK=crypto-miner (or all)
+	@test -n "$(ATTACK)" || (echo "usage: make verify-attack ATTACK=<scenario>|all [ARGS=--since 30]"; exit 1)
+	./scripts/verify-attack.py $(ATTACK) $(ARGS)
 
 scenarios-all:
 	./scenarios/run-all.sh
@@ -158,4 +172,4 @@ help:
 	@printf "  \033[36m%-32s\033[0m %s\n" "scenarios-all" "run every attack in sequence"
 
 .PHONY: setup configure update dev dev-off test-notify bootstrap preflight secrets ai-key diff deploy deploy-soar destroy status verify cases quarantined \
-	argo-ui console grafana grafana-password smoke-test scenario-reset scenarios-all venv test lint images push help
+	argo-ui console grafana grafana-password smoke-test scenario-reset demo-app demo-app-delete verify-attack scenarios-all venv test lint images push help

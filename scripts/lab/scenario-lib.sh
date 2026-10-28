@@ -8,6 +8,27 @@ SCENARIO_LABEL_KEY="${SCENARIO_LABEL_KEY:-scenario}"
 SCENARIO_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 SCENARIO_CASE=""
 
+# Optional target: the demo application (make demo-app) instead of the scenario's own pod.
+#   make <scenario> TARGET=demo   ->  SCENARIO_TARGET=demo
+# A scenario opts in with:
+#   if pod=$(scenario_demo_pod web); then <use "$pod" in ${SCENARIO_NS}>; else <create its own pod>; fi
+# scenario_demo_pod prints a running pod of the tier (web|api|db) and switches
+# SCENARIO_NS to the demo namespace, so the case and quarantine helpers below
+# look in the right place. It fails (and changes nothing) unless TARGET=demo.
+DEMO_NS="${DEMO_NS:-shop}"
+scenario_demo_pod() {
+  [[ "${SCENARIO_TARGET:-}" == "demo" ]] || return 1
+  local tier="$1" pod
+  pod=$(kubectl get pod -n "$DEMO_NS" -l "app=${tier}" --field-selector=status.phase=Running \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+  if [[ -z "$pod" ]]; then
+    echo "TARGET=demo needs the demo app with a running '${tier}' pod. Install it with: make demo-app" >&2
+    exit 1
+  fi
+  SCENARIO_NS="$DEMO_NS"
+  printf '%s' "$pod"
+}
+
 # Remove pods for one scenario id (e.g. "01") and legacy fixed names.
 scenario_cleanup() {
   local id="${1:-}"

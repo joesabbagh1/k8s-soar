@@ -29,7 +29,7 @@ jobs:
       - run: pip install -e ".[agent,console,dev]"
       - run: ruff check src tests
       - run: ruff format --check src tests
-      - run: ruff check --line-length 120 --select E,F,I,B,UP,SIM ../../deploy/cli
+      - run: ruff check --line-length 120 --select E,F,I,B,UP,SIM ../../deploy/cli ../../scripts/verify-attack.py
       - run: pytest -q
 
   images:

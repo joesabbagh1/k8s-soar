@@ -119,7 +119,7 @@ docs/                   architecture, detection catalog, response, AI agent, ope
 | [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
 | [Thesis](docs/thesis/) | methodology, reproducibility, limitations |
 
-Attack scenarios live in `scenarios/`. They run in the `default` namespace. `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
+Attack scenarios live in `scenarios/` ([how to run and verify them](docs/scenarios.md): `make verify-attack`, and an optional demo customer app, `make demo-app`). They run in the `default` namespace. `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
 
 ## License
 

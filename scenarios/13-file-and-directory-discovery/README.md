@@ -59,3 +59,9 @@ kubectl logs -n security-lab scenario-13-file-discovery
 ```bash
 kubectl describe pod -n security-lab scenario-13-file-discovery
 ```
+
+## Detection (k8s-soar v2)
+
+Falco rule `K8sSoar File and Directory Discovery`. Details and known false positives are in
+[`docs/detection-catalog.md`](../../docs/detection-catalog.md). After running the scenario,
+`make verify-attack ATTACK=file-and-directory-discovery` checks that a case was opened for it.

@@ -61,3 +61,9 @@ kubectl logs -n security-lab scenario-16-system-information
 ```bash
 kubectl describe pod -n security-lab scenario-16-system-information
 ```
+
+## Detection (k8s-soar v2)
+
+Falco rule `K8sSoar System Information Discovery`. Details and known false positives are in
+[`docs/detection-catalog.md`](../../docs/detection-catalog.md). After running the scenario,
+`make verify-attack ATTACK=system-information-discovery` checks that a case was opened for it.
