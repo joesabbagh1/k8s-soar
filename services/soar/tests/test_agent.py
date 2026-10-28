@@ -124,7 +124,15 @@ def test_real_litellm_tool_call_imports(monkeypatch):
 def test_model_string_normalisation():
     assert AgentSettings(provider="gemini", model="models/gemini-2.5-flash").litellm_model == "gemini/gemini-2.5-flash"
     assert AgentSettings(provider="gemini", model=" gemini-2.5-flash ").litellm_model == "gemini/gemini-2.5-flash"
-    assert AgentSettings(provider="openrouter", model="anthropic/claude-x").litellm_model == "anthropic/claude-x"
+    # OpenRouter IDs name another vendor; they must still go through OpenRouter.
+    assert (
+        AgentSettings(provider="openrouter", model="anthropic/claude-x").litellm_model
+        == "openrouter/anthropic/claude-x"
+    )
+    free = AgentSettings(provider="openrouter", model="deepseek/deepseek-chat:free").litellm_model
+    assert free == "openrouter/deepseek/deepseek-chat:free"
+    assert AgentSettings(provider="openrouter", model="openrouter/x/y").litellm_model == "openrouter/x/y"
+    assert AgentSettings(provider="deepseek", model="deepseek-chat").litellm_model == "deepseek/deepseek-chat"
 
 
 # --- retries -------------------------------------------------------------------

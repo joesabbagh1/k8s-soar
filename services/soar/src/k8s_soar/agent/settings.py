@@ -8,7 +8,21 @@ from functools import lru_cache
 from pydantic import BaseModel
 
 # LiteLLM provider prefixes. https://docs.litellm.ai/docs/providers
-PROVIDERS = {"anthropic", "openai", "gemini", "azure", "bedrock", "vertex_ai", "ollama", "openrouter", "mistral"}
+PROVIDERS = {
+    "anthropic",
+    "openai",
+    "gemini",
+    "azure",
+    "bedrock",
+    "vertex_ai",
+    "ollama",
+    "openrouter",
+    "mistral",
+    "deepseek",
+}
+# Gateways whose model IDs contain another vendor's name ("deepseek/...:free" on
+# OpenRouter): always routed through the gateway, never to that vendor.
+GATEWAYS = {"openrouter"}
 
 
 class AgentSettings(BaseModel):
@@ -50,6 +64,10 @@ class AgentSettings(BaseModel):
         # Google lists models as "models/gemini-..."; LiteLLM wants the bare ID.
         if model.startswith("models/"):
             model = model.removeprefix("models/")
+        if model.startswith(f"{self.provider}/"):
+            return model
+        if self.provider in GATEWAYS:
+            return f"{self.provider}/{model}"
         if "/" in model and model.split("/", 1)[0] in PROVIDERS:
             return model
         return f"{self.provider}/{model}"

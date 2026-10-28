@@ -28,7 +28,9 @@ k8sSoar:
 | Azure OpenAI | `azure` | `<deployment name>` | API key | `baseUrl: https://<res>.openai.azure.com`, `extraEnv: [{name: AZURE_API_VERSION, value: ...}]` |
 | AWS Bedrock | `bedrock` | `anthropic.claude-...` | — | IAM via IRSA/instance role + `AWS_REGION_NAME` in `extraEnv` |
 | Ollama (local) | `ollama` | `llama3.1`, `qwen2.5` | none | `baseUrl: http://ollama.<ns>:11434`; model must support tool calling |
-| OpenRouter / Mistral / Vertex | `openrouter` / `mistral` / `vertex_ai` | | | |
+| DeepSeek (paid API) | `deepseek` | the ID from DeepSeek's docs | DeepSeek API key | |
+| OpenRouter, including **free** models | `openrouter` | `deepseek/<model>:free` (any ID from openrouter.ai/models, free ones end in `:free`) | OpenRouter key (free account) | Free models are rate-limited, and the model must support tool calling |
+| Mistral / Vertex | `mistral` / `vertex_ai` | | | |
 
 Then:
 
