@@ -24,6 +24,28 @@
   priority: WARNING
   tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
 
+- rule: K8sSoar Lateral Movement To Pod
+  desc: >
+    A shell launched wget or curl and it connected to a private address
+    (another pod or a ClusterIP). The application itself was not the client;
+    a shell tool opening an east-west connection is a pivot from a
+    compromised pod. DNS (port 53) is ignored.
+  condition: >
+    evt.type = connect and evt.dir = < and k8s_soar_workload
+    and (fd.typechar = 4 or fd.typechar = 6)
+    and fd.sport != 53
+    and fd.snet in (rfc_1918_addresses)
+    and (evt.rawres >= 0 or evt.res = EINPROGRESS)
+    and proc.pname in (k8s_soar_shell_binaries)
+    and (proc.name in (wget, curl) or proc.cmdline contains "wget" or proc.cmdline contains "curl")
+  output: >
+    Shell tool connected to a private address (lateral movement)
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname connection=%fd.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: CRITICAL
+  tags: [k8s-soar, soar_contain, mitre_lateral_movement, T1021]
+
 - rule: K8sSoar API Server Access From Shell Tool
   desc: curl/wget pointed at the Kubernetes API from a workload container.
   condition: >

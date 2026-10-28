@@ -10,7 +10,7 @@ Fill per scenario after running simulations.
 | 04 reverse shell | | — | | | |
 | 05 miner | | — | | | |
 | 06 insecure cfg | | | — | | |
-| 07 lateral | | — | | manual | |
+| 07 lateral | | — | | | |
 | 08 host write | | — | | | |
 
 ## Summary metrics

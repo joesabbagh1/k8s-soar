@@ -10,7 +10,7 @@ Maps core thesis scenarios to MITRE ATT&CK (Containers), tooling, and evidence.
 | 04 | Reverse shell outbound | T1059 Execution | — | K8sSoar Reverse Shell Outbound | detect-reverse-shell |
 | 05 | Crypto miner process | T1496 Resource Hijacking | disallow-latest-tag | K8sSoar Crypto Miner Process | quarantine isolate |
 | 06 | Missing security context / :latest | Best practice | require-non-root, disallow-latest-tag | — | — |
-| 07 | Lateral movement pod-to-pod | T1021 Lateral Movement | default-deny NetworkPolicy | Connection rules / Hubble | quarantine CNP |
+| 07 | Lateral movement pod-to-pod | T1021 Lateral Movement | — | K8sSoar Lateral Movement To Pod | quarantine CNP |
 | 08 | Sensitive host path write | T1611 Escape to Host | disallow-host-path | Write rules | block-sensitive-writes |
 
 ## Policy modes

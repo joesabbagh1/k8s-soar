@@ -25,7 +25,7 @@
 
 - Attacker traffic originates **inside** the cluster (compromised pod on the pod network).
 - Attacker and target are in the **`security-lab`** namespace — the common “flat namespace” case when micro-segmentation is missing.
-- **Primary control** is NetworkPolicy, not Falco — the connection is blocked before meaningful application traffic.
+- **Detection** is Falco rule `K8sSoar Lateral Movement To Pod`: a shell-launched `wget`/`curl` that connects to a private address. That rule is `soar_contain`, so SOAR opens a case and quarantines the attacker pod.
 
 ### Impact if unmitigated
 
@@ -82,7 +82,7 @@ flowchart LR
 
 ## Response (detailed)
 
-Scenario 07 relies on **network segmentation** first. The Falco → webhook → SOAR path (scenarios 01, 03–05) is optional reinforcement, not the primary control here.
+`make lateral-movement` lets the first `wget` reach the peer, so Falco sees a completed connect. Rule `K8sSoar Lateral Movement To Pod` then opens a case and quarantines the attacker; a second probe fails because egress is denied. The default-deny policy described below is not installed by this repo.
 
 ### Layer 1 — Prevention (automatic)
 
@@ -148,25 +148,25 @@ In other scenarios, the same label is applied **automatically** by the SOAR resp
 
 | Step | Layer | What happens |
 |------|-------|--------------|
-| 1. **Attack** | Adversary | In **`security-lab`**, `scenario-07-attacker` probes `scenario-07-peer` via pod IP (HTTP/wget). |
-| 2. **Prevention** | NetworkPolicy | Default-deny blocks east-west traffic — connection times out. |
-| 3. **Detection** | Hubble | Denied flow visible in Hubble (optional). |
-| 4. **Response** | Quarantine | Label `security.quarantine=true` to isolate a confirmed-compromised pod. |
+| 1. **Attack** | Adversary | In **`security-lab`**, a shell in `scenario-07-attacker` runs `wget` against `scenario-07-peer`'s pod IP. The peer is nginx, so the TCP connection completes. |
+| 2. **Detection** | Falco | `K8sSoar Lateral Movement To Pod` fires on that connect. |
+| 3. **Response** | SOAR | A case workflow runs and labels the attacker `security.quarantine=true`. |
+| 4. **Containment** | Cilium | The quarantine policy denies the attacker's egress. A second `wget` fails. |
 
 ## Run
 
 ```bash
-./run.sh
+make deploy-soar          # once, so Falco loads the lateral-movement rule
+make lateral-movement
 ```
 
 ## Expected evidence
 
 | Tool | Expected |
 |------|----------|
-| NetworkPolicy | `wget: download timed out` or `blocked` |
-| Hubble | `Dropped` verdict between attacker and peer pods |
-| Falco | — (not primary for this scenario) |
-| SOAR | Manual quarantine demo, or automatic via Falco-driven webhook in other scenarios |
+| Falco | `K8sSoar Lateral Movement To Pod` with `proc.name=wget` and the peer pod IP |
+| SOAR | Case workflow for that rule; attacker pod labelled `security.quarantine=true` |
+| Containment | A second `wget` from the attacker to the peer fails |
 
 ## Capture
 

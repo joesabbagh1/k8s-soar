@@ -18,6 +18,7 @@ Response column: **contain** = quarantined immediately, then triage + notify + a
 | K8sSoar Container Escape Tooling | Critical | T1611 | contain | init containers that `mount` |
 | K8sSoar Crypto Miner Execution | Critical | T1496 | contain | — |
 | K8sSoar Crypto Mining Pool Connection | Critical | T1496 | contain | apps on ports 3333/4444/5555/7777/8888/9999 (port list is broad; tune `k8s_soar_miner_ports`) |
+| K8sSoar Lateral Movement To Pod | Critical | T1021 | contain | shell scripts that `wget`/`curl` a ClusterIP or pod IP (health checks) |
 | K8sSoar API Server Access From Shell Tool | Error | T1613 | notify | scripted health checks with curl |
 | K8sSoar Write Below Binary Directory | Error | T1036 | notify | images that self-update |
 | K8sSoar Terminal Shell In Container | Warning | T1059 | notify | interactive debugging |
