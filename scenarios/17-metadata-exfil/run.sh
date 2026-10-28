@@ -34,4 +34,4 @@ spec:
 EOF
 kubectl wait -n "$SCENARIO_NS" --for=condition=Ready "pod/${POD}" --timeout=90s
 scenario_expect_case "$POD" "$RULE"
-echo "Review it: make cases"
+scenario_review "$POD"

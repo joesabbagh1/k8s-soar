@@ -15,6 +15,7 @@ set -euo pipefail
 NS="k8s-soar-smoke-$(date +%s)"
 SOAR_NS="${K8S_SOAR_NAMESPACE:-k8s-soar}"
 KEEP=false; [[ "${1:-}" == "--keep" ]] && KEEP=true
+PASSED=false
 RULE="K8sSoar Service Account Token Read By Shell Tool"
 # Same slug the Sensor writes into the k8s-soar.io/rule label.
 RULE_LABEL=$(tr '[:upper:]' '[:lower:]' <<<"$RULE" | sed -E 's/[^a-z0-9]+/-/g')
@@ -24,11 +25,12 @@ fail() { echo -e "\033[0;31mFAIL\033[0m $*"; exit 1; }
 pass() { echo -e "\033[0;32mPASS\033[0m $*"; }
 
 cleanup() {
-  if [[ "$KEEP" == true ]]; then
-    echo "Kept namespace ${NS} (delete with: kubectl delete ns ${NS})"
-  else
-    kubectl delete namespace "$NS" --wait=false >/dev/null 2>&1 || true
+  if [[ "$PASSED" == true || "$KEEP" == true ]]; then
+    echo "Left namespace ${NS}. The case stays at the approval gate until you decide in the console."
+    echo "Delete it later with: kubectl delete ns ${NS}"
+    return
   fi
+  kubectl delete namespace "$NS" --wait=false >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -142,8 +144,9 @@ if [[ -n "$PROBE_URL" ]]; then
   fi
 fi
 
+PASSED=true
 echo
 phase=$(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase}')
 echo "Case ${WF} is ${phase} (Running = waiting at the approval gate)."
-echo "Review it: make console, then open /cases/${WF}  (use --keep to keep the test pod for the decision)"
+echo "Review it: make console, then open /cases/${WF}"
 echo -e "\033[0;32mSmoke test passed.\033[0m"

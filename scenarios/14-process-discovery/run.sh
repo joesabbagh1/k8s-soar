@@ -67,3 +67,4 @@ echo "Open shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-14-process-discovery -- sh"
 
 scenario_expect_case scenario-14-process-discovery "K8sSoar Process Discovery"
+scenario_review scenario-14-process-discovery

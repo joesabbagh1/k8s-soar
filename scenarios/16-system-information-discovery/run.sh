@@ -79,3 +79,4 @@ echo "Open shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-16-system-information -- sh"
 
 scenario_expect_case scenario-16-system-information "K8sSoar System Information Discovery"
+scenario_review scenario-16-system-information

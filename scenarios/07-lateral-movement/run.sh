@@ -15,21 +15,26 @@ PEER="scenario-07-peer"
 SOAR_NS="${K8S_SOAR_NAMESPACE:-k8s-soar}"
 KEEP=false
 [[ "${1:-}" == "--keep" ]] && KEEP=true
+PASSED=false
 RULE="K8sSoar Lateral Movement To Pod"
 RULE_LABEL=$(tr '[:upper:]' '[:lower:]' <<<"$RULE" | sed -E 's/[^a-z0-9]+/-/g')
+CASE_SELECTOR="k8s-soar.io/pod=${ATTACKER},k8s-soar.io/rule=${RULE_LABEL}"
 
 step() { echo -e "\n\033[1m==> $*\033[0m"; }
 fail() { echo -e "\033[0;31mFAIL\033[0m $*"; exit 1; }
 pass() { echo -e "\033[0;32mPASS\033[0m $*"; }
 
+# A passing run leaves the quarantined attacker up. The case is waiting at the
+# approval gate; deleting the pod would remove the evidence the reviewer decides on.
 cleanup() {
-  if [[ "$KEEP" == true ]]; then
-    echo "Kept pods in ${SCENARIO_NS} (delete with: make scenario-reset)"
-  else
-    scenario_cleanup "$SCENARIO_ID"
-    kubectl delete pod "$ATTACKER" "$PEER" -n "$SCENARIO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  if [[ "$PASSED" == true || "$KEEP" == true ]]; then
+    return
   fi
+  scenario_cleanup "$SCENARIO_ID"
+  kubectl delete pod "$ATTACKER" "$PEER" -n "$SCENARIO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
+
+has_new_case() { [[ -n "$(scenario_latest_case "$CASE_SELECTOR" "$SOAR_NS")" ]]; }
 trap cleanup EXIT
 
 diagnose_falco() {
@@ -85,7 +90,7 @@ for _ in $(seq 15); do
   if kubectl exec -n "$SCENARIO_NS" "$ATTACKER" -- sh -c "wget -T 3 -qO- http://${PEER_IP}/ >/dev/null"; then
     reached=true
   fi
-  if kubectl get workflows -n "$SOAR_NS" -l "k8s-soar.io/pod=${ATTACKER},k8s-soar.io/rule=${RULE_LABEL}" -o name 2>/dev/null | grep -q .; then
+  if has_new_case; then
     break
   fi
   sleep 2
@@ -102,10 +107,9 @@ if ! kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --since=3m 2
 fi
 
 step "2. Case workflow"
-CASE_SELECTOR="k8s-soar.io/pod=${ATTACKER},k8s-soar.io/rule=${RULE_LABEL}"
-wait_for 90 "case for '${RULE}' on ${ATTACKER}" \
-  sh -c "kubectl get workflows -n ${SOAR_NS} -l '${CASE_SELECTOR}' -o name | grep . >/dev/null"
-WF=$(kubectl get workflows -n "$SOAR_NS" -l "$CASE_SELECTOR" -o jsonpath='{.items[0].metadata.name}')
+wait_for 90 "case for '${RULE}' on ${ATTACKER}" has_new_case
+WF=$(scenario_latest_case "$CASE_SELECTOR" "$SOAR_NS")
+SCENARIO_CASE=$WF
 pass "case ${WF} created"
 
 step "3. Quarantine"
@@ -126,8 +130,6 @@ done
 [[ "$blocked" == true ]] && pass "egress blocked (${PEER_IP} unreachable from the quarantined pod)" \
   || fail "quarantined pod can still reach ${PEER_IP} (reload the policy with: make deploy-soar)"
 
-echo
-phase=$(kubectl get workflow -n "$SOAR_NS" "$WF" -o jsonpath='{.status.phase}')
-echo "Case ${WF} is ${phase} (Running = waiting at the approval gate)."
-echo "Review it: make cases, or make console and open /cases/${WF}"
+PASSED=true
 echo -e "\033[0;32mLateral movement scenario passed.\033[0m"
+scenario_review "$ATTACKER"

@@ -86,3 +86,4 @@ echo "Open Shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-09-discovery -- sh"
 
 scenario_expect_case scenario-09-discovery "K8sSoar Container Discovery"
+scenario_review scenario-09-discovery

@@ -78,3 +78,4 @@ echo "kubectl exec -it -n $SCENARIO_NS scenario-10-serviceaccount -- sh"
 
 scenario_expect_case scenario-10-serviceaccount "K8sSoar Service Account Token Read By Shell Tool"
 scenario_expect_quarantine scenario-10-serviceaccount
+scenario_review scenario-10-serviceaccount

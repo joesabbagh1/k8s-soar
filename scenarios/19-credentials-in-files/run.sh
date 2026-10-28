@@ -77,3 +77,4 @@ echo "kubectl exec -it -n $SCENARIO_NS scenario-11-credentials -- sh"
 
 scenario_expect_case scenario-11-credentials "K8sSoar Sensitive File Read"
 scenario_expect_quarantine scenario-11-credentials
+scenario_review scenario-11-credentials

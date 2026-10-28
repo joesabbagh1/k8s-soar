@@ -29,6 +29,7 @@ echo ">>> Admission result:"
 if kubectl wait -n "$SCENARIO_NS" --for=condition=Ready pod/scenario-06-insecure --timeout=90s >/dev/null 2>&1; then
   echo "Pod is running. Waiting for the Falco case (:latest image)."
   scenario_expect_case scenario-06-insecure "K8sSoar Latest Tag Image Started"
+  scenario_review scenario-06-insecure
 else
   echo "Admission blocked the pod before it ran, so Falco has no process to alert on."
   kubectl get pod scenario-06-insecure -n "$SCENARIO_NS" 2>&1 || true

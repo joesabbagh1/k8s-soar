@@ -14,8 +14,6 @@ scenario_ensure_pod "$SCENARIO_ID" "$POD" busybox:1.36 --command -- sleep 3600 >
 echo ">>> Read SA token from ${POD} (scenario ${SCENARIO_ID})..."
 kubectl exec -n "$SCENARIO_NS" "$POD" -- sh -c 'cat /var/run/secrets/kubernetes.io/serviceaccount/token | head -c 40; echo ...'
 
-echo ">>> Waiting for Falco..."
-sleep 8
-"${ROOT}/scripts/lab/capture-scenario-evidence.sh" 3m 'K8sSoar Sensitive Credential Access|Sensitive credential|scenario-03'
-
-scenario_cleanup "$SCENARIO_ID"
+scenario_expect_case "$POD" "K8sSoar Service Account Token Read By Shell Tool"
+scenario_expect_quarantine "$POD"
+scenario_review "$POD"

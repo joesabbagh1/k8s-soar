@@ -18,4 +18,4 @@ kubectl exec -n "$SCENARIO_NS" "$POD" -- sh -c 'echo probe >> /etc/shadow' 2>/de
 
 scenario_expect_case "$POD" "$RULE"
 scenario_expect_quarantine "$POD"
-echo "Review it: make cases"
+scenario_review "$POD"

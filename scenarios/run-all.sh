@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Optional: run ALL scenarios in sequence (for batch testing only).
-# Each scenario uses its own labeled pods; cleanup runs between scenarios.
+# Clears previous scenario pods first, then leaves each new pod up for review.
+# make scenario-reset clears them all.
 # For demos and thesis evidence, run scenarios individually instead:
 #   ./scenarios/01-shell-in-container/run.sh
 set -euo pipefail
@@ -16,7 +17,6 @@ for dir in "$ROOT"/[0-9][0-9]-*/; do
   if [[ -x "${dir}/run.sh" ]]; then
     "${dir}/run.sh"
   fi
-  scenario_cleanup_all
   sleep 3
 done
 echo "=== All scenarios triggered — collect Falco/Kyverno evidence ==="

@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCENARIO_NS="${SCENARIO_NS:-default}"
 SCENARIO_LABEL_KEY="${SCENARIO_LABEL_KEY:-scenario}"
+# Cases created before this process are leftovers from an earlier run of the same pod name.
+SCENARIO_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+SCENARIO_CASE=""
 
 # Remove pods for one scenario id (e.g. "01") and legacy fixed names.
 scenario_cleanup() {
@@ -62,6 +65,17 @@ scenario_require_namespace() {
   fi
 }
 
+# Newest case for this selector that was opened by the current run.
+scenario_latest_case() {
+  local selector="$1"
+  local soar_ns="${2:-${K8S_SOAR_NAMESPACE:-k8s-soar}}"
+  kubectl get workflows -n "$soar_ns" -l "$selector" \
+    --sort-by=.metadata.creationTimestamp \
+    -o jsonpath='{range .items[*]}{.metadata.creationTimestamp}{" "}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | awk -v start="${SCENARIO_STARTED}" '$1 >= start { name = $2 } END { if (name != "") print name }' \
+    || true
+}
+
 # Block until the response pipeline has opened a case for this pod and rule.
 scenario_expect_case() {
   local pod="$1" rule="$2" label soar_ns selector wf
@@ -70,8 +84,9 @@ scenario_expect_case() {
   soar_ns="${K8S_SOAR_NAMESPACE:-k8s-soar}"
   selector="k8s-soar.io/pod=${pod:0:63},k8s-soar.io/rule=${label}"
   for _ in $(seq 90); do
-    if kubectl get workflows -n "$soar_ns" -l "$selector" -o name 2>/dev/null | grep -q .; then
-      wf=$(kubectl get workflows -n "$soar_ns" -l "$selector" -o jsonpath='{.items[0].metadata.name}')
+    wf=$(scenario_latest_case "$selector" "$soar_ns")
+    if [[ -n "$wf" ]]; then
+      SCENARIO_CASE=$wf
       echo "PASS case ${wf} for ${rule} on ${pod}"
       return 0
     fi
@@ -79,6 +94,24 @@ scenario_expect_case() {
   done
   echo "FAIL no case for '${rule}' on ${pod}. Load rules with: make deploy-soar" >&2
   return 1
+}
+
+# The script does not decide the case. The pod stays so the console still has it.
+scenario_review() {
+  local pod="${1:-}"
+  echo
+  if [[ -n "${SCENARIO_CASE}" ]]; then
+    echo "Case ${SCENARIO_CASE} stays at the approval gate until you decide in the console."
+    echo "Review it: make cases, or make console and open /cases/${SCENARIO_CASE}"
+  else
+    echo "Review it: make cases"
+  fi
+  if [[ -n "$pod" ]]; then
+    echo "Left ${pod} in ${SCENARIO_NS} until that decision."
+  else
+    echo "Left the scenario pods in ${SCENARIO_NS} until that decision."
+  fi
+  echo "Delete them later with: make scenario-reset"
 }
 
 # Block until the contain step has labelled the pod.

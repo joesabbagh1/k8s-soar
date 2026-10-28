@@ -40,6 +40,7 @@ if kubectl wait -n "$SCENARIO_NS" --for=condition=Ready pod/scenario-02-privileg
   echo "Pod is running (admission allowed it). Waiting for the Falco case."
   scenario_expect_case scenario-02-privileged "K8sSoar Privileged Container Started"
   scenario_expect_quarantine scenario-02-privileged
+  scenario_review scenario-02-privileged
 else
   echo "Admission blocked the privileged pod before it ran, so Falco has no process to alert on."
   kubectl get pod scenario-02-privileged -n "$SCENARIO_NS" 2>&1 || true

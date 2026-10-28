@@ -12,11 +12,11 @@ scenario_cleanup "$SCENARIO_ID"
 
 echo ">>> Spawn miner-like process in ${SCENARIO_NS} (scenario ${SCENARIO_ID})..."
 kubectl delete pod "$SCENARIO_POD" -n "$SCENARIO_NS" --ignore-not-found --wait=true --timeout=60s
-kubectl run "$SCENARIO_POD" -n "$SCENARIO_NS" --rm -i --restart=Never \
+kubectl run "$SCENARIO_POD" -n "$SCENARIO_NS" --restart=Never \
   --labels="${SCENARIO_LABEL_KEY}=${SCENARIO_ID},scenario-target=true" \
-  --image=debian:bookworm-slim \
-  -- sh -c 'cp "$(command -v sleep)" /tmp/xmrig && chmod +x /tmp/xmrig && /tmp/xmrig 5'
-
-echo ">>> Waiting for Falco..."
-sleep 8
-"${ROOT}/scripts/lab/capture-scenario-evidence.sh" 3m 'K8sSoar Crypto Miner Process|Crypto miner|scenario-05'
+  --image=debian:bookworm-slim --command -- \
+  sh -c 'cp "$(command -v sleep)" /tmp/xmrig && chmod +x /tmp/xmrig && /tmp/xmrig 3600'
+kubectl wait -n "$SCENARIO_NS" --for=condition=Ready "pod/${SCENARIO_POD}" --timeout=120s
+scenario_expect_case "$SCENARIO_POD" "K8sSoar Crypto Miner Execution"
+scenario_expect_quarantine "$SCENARIO_POD"
+scenario_review "$SCENARIO_POD"
