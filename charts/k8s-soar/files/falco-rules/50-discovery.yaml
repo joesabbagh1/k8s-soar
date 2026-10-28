@@ -26,15 +26,15 @@
 
 - rule: K8sSoar Lateral Movement To Pod
   desc: >
-    A shell launched wget or curl and it connected to a private address
-    (another pod or a ClusterIP). The application itself was not the client;
-    a shell tool opening an east-west connection is a pivot from a
-    compromised pod. DNS (port 53) is ignored.
+    wget or curl connected to a private address (another pod or a ClusterIP).
+    A shell tool opening an east-west connection is a pivot from a
+    compromised pod. DNS (port 53) is ignored. The destination is matched
+    with fd.snet, which accepts a network; fd.sip only accepts a single IP.
   condition: >
     evt.type = connect and evt.dir = < and k8s_soar_workload
     and (fd.typechar = 4 or fd.typechar = 6 or fd.type in (ipv4, ipv6))
     and (not fd.sport exists or fd.sport != 53)
-    and (fd.sip in (k8s_soar_private_nets) or fd.snet in (k8s_soar_private_nets))
+    and fd.snet in (k8s_soar_private_nets)
     and (evt.rawres >= 0 or evt.res = EINPROGRESS)
     and (proc.name in (wget, curl) or proc.cmdline contains "wget" or proc.cmdline contains "curl")
   output: >
