@@ -15,7 +15,7 @@
 
 ## Simulation procedure
 
-1. Install the stack: `cd deploy/ansible && ./setup.sh` with `k8s_soar_env: lab`, or `make deploy ENV=lab`
+1. Install the stack: `cd deploy/ansible && ./setup.sh`, or `make deploy` (`security-lab` is included)
 2. Run one attack: `make <attack>` (for example `make shell-in-container`; `make help` lists them)
 3. Capture logs within 2 minutes:
    - `kubectl logs -n falco ...`

@@ -4,14 +4,14 @@ Maps core thesis scenarios to MITRE ATT&CK (Containers), tooling, and evidence.
 
 | ID | Scenario | MITRE ATT&CK | Kyverno (prevent) | Falco (detect) | Tetragon / Cilium (enforce) |
 |----|----------|--------------|-------------------|----------------|-----------------------------|
-| 01 | Shell in victim container | T1059 Execution | — | K8sSoar Shell In Victim Container | — |
-| 02 | Privileged pod / hostPath | T1611 Escape to Host | disallow-privileged, disallow-host-path | Default Falco rules | — |
-| 03 | SA token / credential read | T1552 Credential Access | restrict-sa-automount | K8sSoar Sensitive Credential Access | — |
-| 04 | Reverse shell outbound | T1059 Execution | — | K8sSoar Reverse Shell Outbound | detect-reverse-shell |
-| 05 | Crypto miner process | T1496 Resource Hijacking | disallow-latest-tag | K8sSoar Crypto Miner Process | quarantine isolate |
-| 06 | Missing security context / :latest | Best practice | require-non-root, disallow-latest-tag | — | — |
+| 01 | Shell in victim container | T1059 Execution | — | K8sSoar Terminal Shell In Container | — |
+| 02 | Privileged pod / hostPath | T1611 Escape to Host | disallow-privileged, disallow-host-path | K8sSoar Privileged Container Started | — |
+| 03 | SA token / credential read | T1552 Credential Access | restrict-sa-automount | K8sSoar Service Account Token Read By Shell Tool | — |
+| 04 | Reverse shell outbound | T1059 Execution | — | K8sSoar Reverse Shell | detect-reverse-shell |
+| 05 | Crypto miner process | T1496 Resource Hijacking | disallow-latest-tag | K8sSoar Crypto Miner Execution | quarantine isolate |
+| 06 | Missing security context / :latest | Best practice | require-non-root, disallow-latest-tag | K8sSoar Latest Tag Image Started | — |
 | 07 | Lateral movement pod-to-pod | T1021 Lateral Movement | — | K8sSoar Lateral Movement To Pod | quarantine CNP |
-| 08 | Sensitive host path write | T1611 Escape to Host | disallow-host-path | Write rules | block-sensitive-writes |
+| 08 | Sensitive host path write | T1611 Escape to Host | disallow-host-path | K8sSoar Sensitive File Write | block-sensitive-writes |
 
 ## Policy modes
 
@@ -26,7 +26,7 @@ Maps core thesis scenarios to MITRE ATT&CK (Containers), tooling, and evidence.
 Each scenario directory contains `README.md` (steps + expected evidence) and `run.sh`. Deploy the lab namespace, then run one attack the same way as `make smoke-test`:
 
 ```bash
-make deploy ENV=lab
+make deploy
 make shell-in-container
 make 01-shell-in-container   # same scenario
 ```

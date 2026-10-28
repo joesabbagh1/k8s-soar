@@ -50,4 +50,4 @@ k8sSoar:
     grafanaExternalUrl: ""   # e.g. https://grafana.example.com
     argoExternalUrl: ""      # e.g. https://argo.example.com
   lab:
-    enabled: false
+    enabled: true

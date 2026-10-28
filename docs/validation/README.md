@@ -8,7 +8,7 @@
 | Bootstrap cluster + stack | `cd deploy/ansible && ./setup.sh` (or `make deploy` on an existing cluster) |
 | Verify components | `make status` |
 | End-to-end check | `make smoke-test` |
-| Run one attack | `make deploy ENV=lab`, then `make <attack>` (see `make help`) |
+| Run one attack | `make deploy`, then `make <attack>` (see `make help`) |
 
 ## Checklist
 

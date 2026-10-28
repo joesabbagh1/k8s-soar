@@ -33,18 +33,16 @@ spec:
         echo "Checking common credential locations..."
 
         for file in \
-          /etc/passwd \
           /etc/shadow \
-          /root/.ssh \
+          /etc/passwd \
+          /root/.ssh/id_rsa \
           /root/.kube/config \
           /app/.env \
           /config/config.yaml
         do
-          if [ -e "$file" ]; then
-            echo "[FOUND] $file"
-          else
-            echo "[MISSING] $file"
-          fi
+          echo "---- $file"
+          cat "$file" 2>/dev/null | head -c 80 || echo "[unreadable] $file"
+          echo
         done
 
         echo
@@ -76,3 +74,6 @@ echo "kubectl logs -n $SCENARIO_NS scenario-11-credentials"
 echo
 echo "Open shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-11-credentials -- sh"
+
+scenario_expect_case scenario-11-credentials "K8sSoar Sensitive File Read"
+scenario_expect_quarantine scenario-11-credentials

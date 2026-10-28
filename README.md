@@ -66,7 +66,7 @@ The console is the analyst view ([docs](docs/console.md)). Argo's UI (`make argo
 ```bash
 make preflight                         # tools + cluster checks
 cp deploy/secrets.env.example deploy/secrets.env   # optional: Slack, Jira, AI key
-make deploy                            # helmfile apply (ENV=lab adds the security-lab namespace)
+make deploy                            # helmfile apply, including the security-lab namespace
 make status                            # health check
 make smoke-test                        # trigger a rule, verify containment end to end
 make console                           # review and decide cases
@@ -102,7 +102,7 @@ charts/k8s-soar/        k8s-soar's own resources
   templates/console/    analyst console
   templates/agent/      AI triage agent
 services/soar/          Python: workflow steps (soar-actions), console (soar-console), AI agent (soar-agent)
-scenarios/              attack simulations (`make <attack>` after `make deploy ENV=lab`)
+scenarios/              attack simulations (`make <attack>` after `make deploy`)
 scripts/                verify, smoke test, secrets, preflight, lab helpers
 docs/                   architecture, detection catalog, response, AI agent, operations
 ```
@@ -119,7 +119,7 @@ docs/                   architecture, detection catalog, response, AI agent, ope
 | [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
 | [Thesis](docs/thesis/) | methodology, reproducibility, limitations |
 
-Attack scenarios live in `scenarios/`. `make deploy ENV=lab` prepares the target namespace, then `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
+Attack scenarios live in `scenarios/`. `make deploy` creates the `security-lab` namespace, then `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
 
 ## License
 

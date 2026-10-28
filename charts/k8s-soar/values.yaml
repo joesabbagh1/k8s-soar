@@ -25,9 +25,10 @@ trustedNamespaces:
   - k8s-soar
   - local-path-storage
 
-# Lab profile: creates a namespace for the scenarios/ attack simulations.
+# Attack-scenario namespace. Part of the default install so `make deploy`
+# does not delete it. It is not a trusted namespace: rules still apply there.
 lab:
-  enabled: false
+  enabled: true
   namespace: security-lab
 
 image:

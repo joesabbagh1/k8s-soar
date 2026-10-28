@@ -38,12 +38,9 @@ spec:
         ls -l /var/run/secrets/kubernetes.io/serviceaccount
 
         echo
-        echo "[3] Token Status"
-        if [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
-          echo "ServiceAccount token is mounted."
-        else
-          echo "ServiceAccount token not found."
-        fi
+        echo "[3] Token"
+        cat /var/run/secrets/kubernetes.io/serviceaccount/token | head -c 40
+        echo
 
         echo
         echo "[4] CA Certificate"
@@ -78,3 +75,6 @@ echo "kubectl logs -n $SCENARIO_NS scenario-10-serviceaccount"
 echo
 echo "Shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-10-serviceaccount -- sh"
+
+scenario_expect_case scenario-10-serviceaccount "K8sSoar Service Account Token Read By Shell Tool"
+scenario_expect_quarantine scenario-10-serviceaccount

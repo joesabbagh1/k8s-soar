@@ -6,7 +6,6 @@
 git clone https://github.com/joesabbagh1/k8s-soar.git
 cd k8s-soar/deploy/ansible
 ./setup.sh --pre-setup-only           # renders inventory.ini and group_vars/all.yml
-# edit group_vars/all.yml: k8s_soar_env: lab
 ./setup.sh
 cd ../.. && make status && make smoke-test
 ```
@@ -15,7 +14,7 @@ cd ../.. && make status && make smoke-test
 
 ```bash
 make preflight
-make deploy ENV=lab
+make deploy
 make status
 ```
 

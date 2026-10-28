@@ -46,6 +46,109 @@
   priority: CRITICAL
   tags: [k8s-soar, soar_contain, mitre_lateral_movement, T1021]
 
+- rule: K8sSoar File and Directory Discovery
+  desc: >
+    A shell ran ls or find inside a workload container. Common during image
+    startup, so notify only.
+  condition: >
+    spawned_process and k8s_soar_workload
+    and proc.pname in (k8s_soar_shell_binaries)
+    and proc.name in (ls, find)
+  output: >
+    Directory listing from a shell
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1083]
+
+- rule: K8sSoar Process Discovery
+  desc: A shell inspected the process table (ps, top, pgrep) inside a workload container.
+  condition: >
+    spawned_process and k8s_soar_workload
+    and proc.pname in (k8s_soar_shell_binaries)
+    and proc.name in (ps, top, pstree, pgrep)
+  output: >
+    Process listing from a shell
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1057]
+
+- rule: K8sSoar Account Discovery
+  desc: >
+    A shell enumerated users: id/whoami, or a read of /etc/passwd or
+    /etc/group. Notify only; some images read passwd at start.
+  condition: >
+    k8s_soar_workload and (
+      (spawned_process and proc.pname in (k8s_soar_shell_binaries) and proc.name in (id, whoami, groups))
+      or (open_read and fd.name in ("/etc/passwd", "/etc/group") and proc.name in (k8s_soar_file_readers))
+    )
+  output: >
+    Account discovery in container
+    (proc=%proc.name cmdline=%proc.cmdline file=%fd.name parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1087]
+
+- rule: K8sSoar System Information Discovery
+  desc: A shell ran uname or hostname inside a workload container.
+  condition: >
+    spawned_process and k8s_soar_workload
+    and proc.pname in (k8s_soar_shell_binaries)
+    and proc.name in (uname, hostname)
+  output: >
+    System information discovery
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1082]
+
+- rule: K8sSoar Container Discovery
+  desc: >
+    A process read its own cgroup or mount table. Used to learn the
+    container runtime and what is mounted in.
+  condition: >
+    open_read and k8s_soar_workload
+    and (fd.name = /proc/1/cgroup or fd.name = /proc/self/mountinfo)
+  output: >
+    Container identity files read
+    (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
+
+- rule: K8sSoar Kubelet Probe
+  desc: >
+    A workload container connected, or attempted to connect, to the kubelet
+    port (10250). A refused connect still counts.
+  condition: >
+    evt.type = connect and evt.dir = < and k8s_soar_workload and fd.sport = 10250
+  output: >
+    Kubelet port probed
+    (proc=%proc.name cmdline=%proc.cmdline connection=%fd.name parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: ERROR
+  tags: [k8s-soar, soar_notify, mitre_discovery, T1613]
+
+- rule: K8sSoar Latest Tag Image Started
+  desc: >
+    A process started from an image tagged latest. The tag is mutable, so
+    the running bits are not pinned. Notify only.
+  condition: spawned_process and k8s_soar_workload and container.image.tag = "latest"
+  output: >
+    Process started from a :latest image
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_defense_evasion, T1525]
+
 - rule: K8sSoar API Server Access From Shell Tool
   desc: curl/wget pointed at the Kubernetes API from a workload container.
   condition: >

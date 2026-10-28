@@ -15,13 +15,23 @@ Response column: **contain** = quarantined immediately, then triage + notify + a
 | K8sSoar Drifted Binary Executed | Critical | T1105 | contain | images that download plugins/binaries at start → `k8s_soar_allowed_images` |
 | K8sSoar Service Account Token Read By Shell Tool | Critical | T1552.007 | contain | debugging with `kubectl exec ... cat token` |
 | K8sSoar Sensitive File Read | Critical | T1003.008 | contain | images whose entrypoint reads /etc/shadow (rare) |
+| K8sSoar Sensitive File Write | Critical | T1003.008 | contain | images that rewrite /etc/shadow at start (rare) |
 | K8sSoar Container Escape Tooling | Critical | T1611 | contain | init containers that `mount` |
+| K8sSoar Privileged Container Started | Critical | T1611 | contain | workloads that intentionally run privileged |
 | K8sSoar Crypto Miner Execution | Critical | T1496 | contain | — |
 | K8sSoar Crypto Mining Pool Connection | Critical | T1496 | contain | apps on ports 3333/4444/5555/7777/8888/9999 (port list is broad; tune `k8s_soar_miner_ports`) |
 | K8sSoar Lateral Movement To Pod | Critical | T1021 | contain | shell scripts that `wget`/`curl` a ClusterIP or pod IP (health checks) |
+| K8sSoar Kubelet Probe | Error | T1613 | notify | node agents that scrape the local kubelet |
 | K8sSoar API Server Access From Shell Tool | Error | T1613 | notify | scripted health checks with curl |
 | K8sSoar Write Below Binary Directory | Error | T1036 | notify | images that self-update |
-| K8sSoar Terminal Shell In Container | Warning | T1059 | notify | interactive debugging |
+| K8sSoar Terminal Shell In Container | Warning | T1059 | notify | interactive debugging (`kubectl exec -it`) |
+| K8sSoar File and Directory Discovery | Warning | T1083 | notify | images whose entrypoint runs `ls` or `find` |
+| K8sSoar Process Discovery | Warning | T1057 | notify | images that run `ps` from a shell |
+| K8sSoar Account Discovery | Warning | T1087 | notify | images that `id` or read /etc/passwd at start |
+| K8sSoar System Information Discovery | Warning | T1082 | notify | images that run `uname` or `hostname` from a shell |
+| K8sSoar Container Discovery | Warning | T1613 | notify | processes that read /proc/1/cgroup or mountinfo |
+| K8sSoar Host IPC Access | Warning | T1611 | notify | processes that read /proc/sysvipc |
+| K8sSoar Latest Tag Image Started | Warning | T1525 | notify | any workload still pinned to `:latest` |
 | K8sSoar Package Manager In Running Container | Warning | T1072 | notify | images installing packages at start (anti-pattern); queries such as `apk manifest` are ignored |
 | K8sSoar Cloud Metadata Access | Warning | T1552.005 | notify | cloud SDKs (IRSA, workload identity) |
 | K8sSoar Network Recon Tool | Warning | T1046 | notify | network debug images (netshoot) |

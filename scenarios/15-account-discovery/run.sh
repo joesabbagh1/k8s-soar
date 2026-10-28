@@ -73,3 +73,5 @@ echo "kubectl logs -n $SCENARIO_NS scenario-15-account-discovery"
 echo
 echo "Open shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-15-account-discovery -- sh"
+
+scenario_expect_case scenario-15-account-discovery "K8sSoar Account Discovery"

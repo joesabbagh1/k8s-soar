@@ -1,13 +1,37 @@
-#!/bin/bash
-echo "=== Starting Scenario 17: Cloud Metadata Exfiltration ==="
-echo "[*] Attempting to query cloud provider metadata endpoint at 169.254.169.254..."
+#!/usr/bin/env bash
+# Query the cloud metadata address from inside a pod. The connect is the
+# signal; on bare metal nothing answers and the rule still matches.
+set -euo pipefail
 
-# Simulating a web service shell executing a curl query to the metadata server
-curl --connect-timeout 3 -s http://169.254.169.254/latest/meta-data/ 2>&1
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../../scripts/lab/scenario-lib.sh
+source "${ROOT}/scripts/lab/scenario-lib.sh"
 
-if [ $? -ne 0 ]; then
-    echo "[+] Request blocked or timed out. Cilium Network Policy successfully intercepted the exfiltration attempt!"
-    echo "[+] Falco alert triggered for anomalous internal metadata tracking."
-else
-    echo "[!] Warning: Metadata endpoint responded. Ensure strict Cilium egress rules are applied."
-fi
+SCENARIO_ID="17"
+POD="scenario-17-metadata"
+RULE="K8sSoar Cloud Metadata Access"
+
+scenario_require_namespace
+kubectl delete pod "$POD" -n "$SCENARIO_NS" --ignore-not-found --wait=true --timeout=60s >/dev/null 2>&1 || true
+
+kubectl apply -n "$SCENARIO_NS" -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${POD}
+  labels:
+    ${SCENARIO_LABEL_KEY}: "${SCENARIO_ID}"
+    scenario-target: "true"
+spec:
+  restartPolicy: Never
+  containers:
+    - name: attacker
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - wget -T 3 -O /dev/null http://169.254.169.254/latest/meta-data/ || true; sleep 3600
+EOF
+kubectl wait -n "$SCENARIO_NS" --for=condition=Ready "pod/${POD}" --timeout=90s
+scenario_expect_case "$POD" "$RULE"
+echo "Review it: make cases"

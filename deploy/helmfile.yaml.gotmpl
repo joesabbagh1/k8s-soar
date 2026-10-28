@@ -1,7 +1,7 @@
 # k8s-soar — every Helm release, pinned, in dependency order.
 #
 #   make deploy                 # = helmfile -f deploy/helmfile.yaml.gotmpl -e default apply --skip-diff-on-install
-#   make deploy ENV=lab         # adds the security-lab namespace for attack scenarios
+#   make deploy ENV=lab         # default stack, plus local Grafana and Argo links
 #   make diff                   # preview changes
 #
 # Releases with custom resources whose CRDs are installed by another release set

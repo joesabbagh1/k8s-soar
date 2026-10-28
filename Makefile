@@ -97,7 +97,7 @@ smoke-test: ## End-to-end test: trigger a rule and check containment (ARGS=--kee
 # Attack scenarios live in scenarios/<id>-<name>/run.sh.
 # `make <name>` runs one (same shape as smoke-test). The numbered directory
 # name is an alias: `make shell-in-container` and `make 01-shell-in-container`.
-# `make deploy ENV=lab` creates the security-lab namespace first.
+# `make deploy` creates the security-lab namespace.
 SCENARIO_DIRS := $(patsubst scenarios/%/run.sh,%,$(wildcard scenarios/*/run.sh))
 scenario_slug = $(patsubst $(firstword $(subst -, ,$(1)))-%,%,$(1))
 
@@ -148,7 +148,7 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage: make <target> [ENV=default|lab]\n"} \
 	  /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } \
 	  /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) }' $(MAKEFILE_LIST)
-	@printf "\n\033[1mScenarios\033[0m  (make deploy ENV=lab first; make <attack> runs one, like smoke-test)\n"
+	@printf "\n\033[1mScenarios\033[0m  (make deploy first; make <attack> runs one, like smoke-test)\n"
 	@for dir in scenarios/[0-9][0-9]-*/run.sh; do \
 	  name=$$(basename "$$(dirname "$$dir")"); \
 	  slug=$${name#[0-9][0-9]-}; \

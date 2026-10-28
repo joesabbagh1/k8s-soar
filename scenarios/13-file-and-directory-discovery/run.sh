@@ -69,3 +69,5 @@ echo "kubectl logs -n $SCENARIO_NS scenario-13-file-discovery"
 echo
 echo "Open shell:"
 echo "kubectl exec -it -n $SCENARIO_NS scenario-13-file-discovery -- sh"
+
+scenario_expect_case scenario-13-file-discovery "K8sSoar File and Directory Discovery"

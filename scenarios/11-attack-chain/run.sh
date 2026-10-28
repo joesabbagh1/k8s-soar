@@ -21,7 +21,13 @@ kubectl wait \
   pod \
   -l app=dvwa \
   -n "$SCENARIO_NS" \
-  --timeout=90s || true
+  --timeout=180s
+
+POD=$(kubectl get pod -n "$SCENARIO_NS" -l app=dvwa -o jsonpath='{.items[0].metadata.name}')
+echo ">>> Stage 2: read the service-account token in ${POD}"
+kubectl exec -n "$SCENARIO_NS" "$POD" -- cat /var/run/secrets/kubernetes.io/serviceaccount/token >/dev/null
+scenario_expect_case "$POD" "K8sSoar Service Account Token Read By Shell Tool"
+scenario_expect_quarantine "$POD"
 
 echo
 kubectl get pod -l app=dvwa -n "$SCENARIO_NS"

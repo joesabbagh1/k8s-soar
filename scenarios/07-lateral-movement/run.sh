@@ -43,7 +43,7 @@ wait_for() {
 }
 
 if ! kubectl get namespace "$SCENARIO_NS" >/dev/null 2>&1; then
-  fail "namespace ${SCENARIO_NS} does not exist. Create it with: make deploy ENV=lab"
+  fail "namespace ${SCENARIO_NS} does not exist. Create it with: make deploy"
 fi
 
 scenario_cleanup "$SCENARIO_ID"

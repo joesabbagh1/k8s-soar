@@ -15,6 +15,34 @@
   priority: CRITICAL
   tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
 
+- rule: K8sSoar Privileged Container Started
+  desc: >
+    A process started in a privileged container. Privileged is a full
+    breakout primitive (host devices, all capabilities). Admission should
+    have rejected the pod; this catches the ones that were allowed.
+  condition: spawned_process and k8s_soar_workload and container.privileged = true
+  output: >
+    Process started in a privileged container
+    (proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname user=%user.name
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: CRITICAL
+  tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
+
+- rule: K8sSoar Host IPC Access
+  desc: >
+    A process read the host System V IPC tables (/proc/sysvipc). Inside a
+    hostIPC pod those tables belong to the node, not the container.
+  condition: >
+    open_read and k8s_soar_workload and fd.name startswith /proc/sysvipc/
+  output: >
+    Host IPC table read
+    (file=%fd.name proc=%proc.name cmdline=%proc.cmdline parent=%proc.pname
+    ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name
+    image=%container.image.repository:%container.image.tag)
+  priority: WARNING
+  tags: [k8s-soar, soar_notify, mitre_privilege_escalation, T1611]
+
 - rule: K8sSoar Write Below Binary Directory
   desc: A file was written below a system binary directory inside a running workload container.
   condition: >

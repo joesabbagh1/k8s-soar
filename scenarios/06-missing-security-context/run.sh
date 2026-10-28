@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${ROOT}/scripts/lab/scenario-lib.sh"
 
 SCENARIO_ID="06"
+scenario_require_namespace
 scenario_cleanup "$SCENARIO_ID"
 kubectl delete pod scenario-06-insecure -n "$SCENARIO_NS" --ignore-not-found --wait=true --timeout=60s 2>/dev/null || true
 
@@ -24,7 +25,13 @@ spec:
       image: nginx:latest
       command: ["sleep", "3600"]
 EOF
-echo ">>> Pod created (Kyverno audit — not blocked in Audit mode):"
-kubectl get pod scenario-06-insecure -n "$SCENARIO_NS" 2>&1 || true
+echo ">>> Admission result:"
+if kubectl wait -n "$SCENARIO_NS" --for=condition=Ready pod/scenario-06-insecure --timeout=90s >/dev/null 2>&1; then
+  echo "Pod is running. Waiting for the Falco case (:latest image)."
+  scenario_expect_case scenario-06-insecure "K8sSoar Latest Tag Image Started"
+else
+  echo "Admission blocked the pod before it ran, so Falco has no process to alert on."
+  kubectl get pod scenario-06-insecure -n "$SCENARIO_NS" 2>&1 || true
+fi
 echo ">>> Kyverno PolicyReports (audit):"
 kubectl get policyreport -A 2>/dev/null | grep -i security-lab || echo "    (none yet — background scan may take a minute)"
