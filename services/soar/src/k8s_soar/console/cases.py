@@ -92,12 +92,20 @@ CLOSED_LABELS = {
     "release-quarantine": "Closed — false positive",
 }
 
+# Plain-language verdicts (the schema keeps the security terms).
 VERDICT_LABELS = {
-    "true_positive": "True positive",
-    "benign": "Benign",
-    "needs_review": "Needs review",
+    "true_positive": "Real threat",
+    "benign": "Not a threat",
+    "needs_review": "Needs a human look",
     "unavailable": "Unavailable",
 }
+VERDICT_EXPLAINED = {
+    "true_positive": "The AI thinks this is a real attack or compromise.",
+    "benign": "The AI thinks this is expected or harmless activity, a false positive.",
+    "needs_review": "The AI couldn't decide from the evidence; an analyst should look.",
+    "unavailable": "",
+}
+VERDICT_TONE = {"true_positive": "bad", "benign": "good", "needs_review": "warn"}
 
 _FALCO_PREFIX = re.compile(r"^\S+:\s+(Emergency|Alert|Critical|Error|Warning|Notice|Informational|Debug)\s+", re.I)
 
@@ -479,7 +487,7 @@ class Case:
         events = {e.step: e for e in self.timeline if e.step}
         rows: list[StepView] = []
         if self.alert:
-            rows.append(StepView("detect", "Detected by Falco", "done", self.alert.rule, self.alert.time, tone="bad"))
+            rows.append(StepView("detect", "Detected by Falco", "done", self.alert.rule, self.alert.time))
         plan = ["guard", "contain", "enrich", "triage", "decide", "notify"]
         route = self.route.get("route")
         if route == "auto":
@@ -566,7 +574,7 @@ class Case:
         events: list[Event] = []
         alert = self.alert
         if alert:
-            events.append(Event(alert.time, "Detected by Falco", alert.rule, "bad", "detect"))
+            events.append(Event(alert.time, "Detected by Falco", alert.rule, "info", "detect"))
 
         guard = self.steps.get("guard")
         if guard and guard.phase == "Succeeded":
@@ -618,7 +626,7 @@ class Case:
                 events.append(
                     Event(
                         triage.finished,
-                        f"AI verdict: {label} ({round(verdict.confidence * 100)}% confidence)",
+                        f"AI verdict: {label} ({round(verdict.confidence * 100)}% sure)",
                         verdict.summary,
                         "bad" if verdict.verdict == "true_positive" else "info",
                         "triage",

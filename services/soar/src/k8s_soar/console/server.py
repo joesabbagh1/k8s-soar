@@ -36,6 +36,9 @@ app = FastAPI(title="k8s-soar console", version="0.5.1", docs_url=None, redoc_ur
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["ago"] = cases.ago
 templates.env.globals["offset"] = cases.offset
+templates.env.globals["verdict_label"] = lambda v: cases.VERDICT_LABELS.get(v, v)
+templates.env.globals["verdict_explained"] = lambda v: cases.VERDICT_EXPLAINED.get(v, "")
+templates.env.globals["verdict_tone"] = lambda v: cases.VERDICT_TONE.get(v, "")
 
 ANALYST_COOKIE = "soar_analyst"
 _CASE_NAME = re.compile(r"^[a-z0-9][a-z0-9.-]{0,252}$")

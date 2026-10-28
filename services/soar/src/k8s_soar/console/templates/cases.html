@@ -50,7 +50,7 @@
         <span class="status {{ c.status }}">{{ c.status_label }}</span>
         {% if c.status == "in_progress" and c.current %}<div class="sub">{{ c.current.title }}</div>{% endif %}
       </td>
-      <td class="hide-sm">{% if v and v.verdict != "unavailable" %}<span class="{{ 'sev-critical' if v.verdict == 'true_positive' else '' }}">{{ v.verdict.replace("_", " ")|capitalize }}</span> <span class="faint">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
+      <td class="hide-sm">{% if v and v.verdict != "unavailable" %}<span class="v-{{ verdict_tone(v.verdict) }}">{{ verdict_label(v.verdict) }}</span> <span class="faint">{{ (v.confidence * 100)|round|int }}%</span>{% else %}<span class="faint">—</span>{% endif %}</td>
       <td class="muted" style="text-align:right;white-space:nowrap" title="{{ c.created }}">{{ ago(c.created) }}</td>
     </tr>
   {% endfor %}

@@ -122,7 +122,7 @@ def test_awaiting_case_reads_like_a_case():
     titles = [e.title for e in case.timeline]
     assert titles[0] == "Detected by Falco"
     assert "Pod quarantined and network-isolated" in titles
-    assert "AI verdict: True positive (90% confidence)" in titles
+    assert "AI verdict: Real threat (90% sure)" in titles
     assert titles[-1] == "Waiting for an analyst decision"
 
 

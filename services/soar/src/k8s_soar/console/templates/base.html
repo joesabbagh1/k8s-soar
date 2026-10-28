@@ -38,6 +38,8 @@
   --ok: #47cd89; --ok-bg: rgba(71, 205, 137, .10); --shadow: none;
 }
 * { box-sizing: border-box; }
+/* Components set display (grid/flex); without this, [hidden] would be ignored. */
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 var(--sans); font-feature-settings: "tnum" 1; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 2px; }
@@ -92,6 +94,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 80px; }
 .status.in_progress { color: var(--accent); } .status.in_progress::before { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
 .status.failed { color: var(--crit); } .status.failed::before { background: var(--crit); }
 .status.closed::before { background: var(--ok); }
+.v-bad { color: var(--crit); } .v-good { color: var(--ok); } .v-warn { color: var(--warn); }
 .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 6px; background: var(--inset); color: var(--muted); }
 .tag.crit { background: var(--crit-bg); color: var(--crit); } .tag.warn { background: var(--warn-bg); color: var(--warn); }
 .tag.ok { background: var(--ok-bg); color: var(--ok); }
@@ -126,6 +129,21 @@ input[type=text], textarea { width: 100%; font: 14px var(--sans); color: var(--s
   border: 1px solid var(--line-strong); border-radius: 9px; padding: 9px 12px; }
 input[type=text]:focus, textarea:focus { outline: 3px solid var(--accent-bg); border-color: var(--accent); }
 main.loading { opacity: .55; transition: opacity .15s .1s; }
+
+/* modal */
+dialog.modal { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--surface); color: var(--text); box-shadow: 0 24px 48px -12px rgba(16, 24, 40, .25); }
+dialog.modal::backdrop { background: rgba(10, 13, 18, .45); backdrop-filter: blur(2px); }
+dialog.modal[open] { animation: pop .14s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.modal-body { padding: 22px 22px 18px; }
+.modal-body h3 { margin: 0 0 6px; font-size: 16px; color: var(--strong); }
+.modal-body p { margin: 0; color: var(--muted); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--line); background: var(--raised);
+  border-radius: 0 0 14px 14px; }
+button.ghost { font: 500 14px var(--sans); padding: 10px 16px; border-radius: 9px; cursor: pointer; background: transparent;
+  color: var(--text); border: 1px solid var(--line-strong); }
+button.ghost:hover { background: var(--hover); }
 @media (max-width: 760px) {
   .bar-in { gap: 14px; padding: 0 16px; } .chip, .who { display: none; } main { padding: 20px 16px 60px; }
   dl.kv { grid-template-columns: 1fr; gap: 2px; } dl.kv dd { margin-bottom: 10px; }
@@ -150,6 +168,15 @@ main.loading { opacity: .55; transition: opacity .15s .1s; }
     </button>
   </div>
 </div></header>
+<dialog class="modal" id="modal" aria-labelledby="modal-title">
+  <form method="dialog">
+    <div class="modal-body"><h3 id="modal-title"></h3><p id="modal-text"></p></div>
+    <div class="modal-actions">
+      <button class="ghost" value="cancel" type="submit">Cancel</button>
+      <button class="primary" value="ok" type="submit" id="modal-ok">Confirm</button>
+    </div>
+  </form>
+</dialog>
 <main data-poll="{% block poll %}0{% endblock %}">
 {% if error %}<div class="notice err">{{ error }}</div>{% endif %}
 {% block content %}{% endblock %}
@@ -159,6 +186,24 @@ main.loading { opacity: .55; transition: opacity .15s .1s; }
    without reloads, tabs, copy buttons, ticking timers and the theme switch. */
 (function () {
   var main = function () { return document.querySelector("main"); };
+
+  // Custom confirmation dialog (never the browser's confirm()).
+  function ask(opts) {
+    var dlg = document.getElementById("modal"), ok = document.getElementById("modal-ok");
+    document.getElementById("modal-title").textContent = opts.title;
+    document.getElementById("modal-text").textContent = opts.text || "";
+    ok.textContent = opts.confirm || "Confirm";
+    ok.classList.toggle("danger", !!opts.danger);
+    return new Promise(function (resolve) {
+      dlg.addEventListener("close", function done() {
+        dlg.removeEventListener("close", done);
+        resolve(dlg.returnValue === "ok");
+      });
+      dlg.returnValue = "";
+      dlg.showModal();
+      ok.focus();
+    });
+  }
 
   function dark() {
     var t = document.documentElement.dataset.theme;
@@ -282,7 +327,11 @@ main.loading { opacity: .55; transition: opacity .15s .1s; }
     if (!form) return;
     ev.preventDefault();
     var c = form.querySelector("input[name=action]:checked");
-    if (c && c.dataset.danger && !confirm(c.dataset.label + " on " + form.dataset.workload + "?")) return;
+    if (c && c.dataset.danger && !(await ask({
+      title: c.dataset.label + "?",
+      text: "This runs on " + form.dataset.workload + " and can't be undone from the console.",
+      confirm: c.dataset.label, danger: true
+    }))) return;
     var btn = form.querySelector("button"), err = form.querySelector(".form-error");
     btn.disabled = true; err.textContent = "";
     try {

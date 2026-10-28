@@ -69,6 +69,14 @@
 .link-row .go { grid-row: span 3; align-self: center; color: var(--accent); font-weight: 500; }
 .link-row code { width: fit-content; max-width: 100%; margin-top: 4px; }
 .flags { display: flex; gap: 6px; flex-wrap: wrap; }
+.fold > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 16px 20px; cursor: pointer; color: var(--strong); font-weight: 600; font-size: 13px; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary > span:first-child::before { content: "›"; display: inline-block; width: 14px; color: var(--muted); transition: transform .15s; }
+.fold[open] > summary > span:first-child::before { transform: rotate(90deg); }
+.fold[open] > summary { border-bottom: 1px solid var(--line); }
+.fold > summary:hover { background: var(--hover); border-radius: 12px; }
+.fold[open] > summary:hover { border-radius: 12px 12px 0 0; }
 </style>
 
 {% if decided %}<div class="notice">Decision recorded. The response continues; this page updates on its own.</div>{% endif %}
@@ -103,8 +111,8 @@
     {% else %}Nothing was changed automatically. Decide whether to act on this pod.{% endif %}
   </div>
   {% if v and v.verdict != "unavailable" %}
-  <div class="ai-line"><b class="{{ 'sev-critical' if v.verdict == 'true_positive' else '' }}">AI: {{ v.verdict.replace("_", " ") }}</b>
-    <span class="muted">· {{ (v.confidence * 100)|round|int }}% confident{% if case.recommended %} · recommends {{ case.recommended }}{% endif %}</span>
+  <div class="ai-line"><b class="v-{{ verdict_tone(v.verdict) }}">AI: {{ verdict_label(v.verdict) }}</b>
+    <span class="muted">· {{ (v.confidence * 100)|round|int }}% sure{% if case.recommended %} · suggests {{ case.choices | selectattr("recommended") | map(attribute="label") | first | lower }}{% endif %}</span>
     <div class="muted" style="margin-top:2px">{{ v.summary }}</div></div>
   {% else %}<div style="height:14px"></div>{% endif %}
   <form method="post" action="/cases/{{ case.name }}/decide" data-decide data-workload="{{ case.workload }}">
@@ -177,9 +185,10 @@
       {% elif v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
       {% else %}
         <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <span style="font-size:17px;font-weight:650;color:{{ 'var(--crit)' if v.verdict == 'true_positive' else ('var(--ok)' if v.verdict == 'benign' else 'var(--warn)') }}">{{ v.verdict.replace("_", " ")|capitalize }}</span>
-          <span class="muted">{{ (v.confidence * 100)|round|int }}% confident</span>
+          <span class="v-{{ verdict_tone(v.verdict) }}" style="font-size:17px;font-weight:650">{{ verdict_label(v.verdict) }}</span>
+          <span class="muted">{{ (v.confidence * 100)|round|int }}% sure</span>
         </div>
+        <div class="muted" style="font-size:13px;margin-top:2px">{{ verdict_explained(v.verdict) }}</div>
         <div class="meter {{ v.verdict }}"><i style="width:{{ (v.confidence * 100)|round|int }}%"></i></div>
         <div style="color:var(--strong)">{{ v.summary }}</div>
         {% if v.evidence %}<ul class="muted" style="margin:10px 0 0;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
@@ -277,16 +286,14 @@
     {{ codeblock("kubectl", "kubectl", case.commands|join("\n")) }}
   </section></div>
   {% if case.other_fields or case.key_fields %}
-  <div class="card"><section>
-    <h2>All Falco fields</h2>
-    {{ codeblock("fields", "output_fields", case.all_fields_text) }}
-  </section></div>
+  <details class="card fold"><summary><span>All Falco fields</span><span class="faint">{{ case.all_fields_text.count("\n") + 1 }} fields</span></summary>
+    <section>{{ codeblock("fields", "output_fields", case.all_fields_text) }}</section>
+  </details>
   {% endif %}
   {% if raw_alert %}
-  <div class="card"><section>
-    <h2>Raw alert</h2>
-    {{ codeblock("raw", "alert.json", raw_alert) }}
-  </section></div>
+  <details class="card fold"><summary><span>Raw alert</span><span class="faint">JSON</span></summary>
+    <section>{{ codeblock("raw", "alert.json", raw_alert) }}</section>
+  </details>
   {% endif %}
   <div class="card"><section>
     <h2>Case</h2>
