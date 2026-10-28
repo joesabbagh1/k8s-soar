@@ -14,7 +14,7 @@
     ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_impact, T1496]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_impact, T1496]
 
 - rule: K8sSoar Crypto Mining Pool Connection
   desc: Outbound connection to a known mining-pool domain or a typical stratum port.
@@ -27,4 +27,4 @@
     ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_impact, T1496]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_impact, T1496]

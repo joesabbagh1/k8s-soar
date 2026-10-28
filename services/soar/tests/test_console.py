@@ -581,3 +581,74 @@ def test_nothing_is_closed_while_the_primary_is_undecided(client):
     ):
         fake.workflows[wf["metadata"]["name"]] = wf
     assert server.reconcile_once() == 0 and fake.decisions == []
+
+
+# --- the group is named after its most specific rule; where the time went ---------------------------
+
+
+def _with_tags(wf, tags):
+    params = wf["spec"]["arguments"]["parameters"]
+    alert = json.loads(params[0]["value"])
+    alert["tags"] = tags
+    params[0]["value"] = json.dumps(alert)
+    return wf
+
+
+def test_the_group_is_named_after_its_most_specific_rule():
+    # A generic rule won the race and quarantined the pod; the crypto-miner rule's case was merged into it.
+    winner = _with_tags(
+        member("drifted", "K8sSoar Drifted Binary Executed", 0, contained=True), ["k8s-soar", "soar_contain", "T1105"]
+    )
+    skipped = _with_tags(
+        member("miner", "K8sSoar Crypto Miner Execution", 0), ["k8s-soar", "soar_specific", "soar_contain", "T1496"]
+    )
+    skipped["status"]["nodes"] = {
+        "g": _node("guard", decision=json.dumps({"action": "skip", "reason": "dup"}), action="skip")
+    }
+    cs = [cases.from_workflow(w) for w in (winner, skipped)]
+    related, attached = cases.attach_related(cs)
+    primary = next(c for c in cs if c.name == "drifted")
+    assert list(related) == ["drifted"] and attached == {"miner"}
+    assert primary.title == "Crypto Miner Execution"  # named after the specific rule...
+    assert primary.alert.rule == "K8sSoar Drifted Binary Executed"  # ...while it is the case doing the work
+    assert [t["id"] for t in primary.mitre] == ["T1496", "T1105"]
+
+
+def test_without_a_specific_rule_the_primary_names_itself():
+    a = _with_tags(member("a", "K8sSoar Drifted Binary Executed", 0, contained=True), ["k8s-soar", "soar_contain"])
+    b = _with_tags(member("b", "K8sSoar Process Discovery", 1), ["k8s-soar", "soar_notify"])
+    cs = [cases.from_workflow(w) for w in (a, b)]
+    cases.attach_related(cs)
+    assert cs[0].title == "Drifted Binary Executed"
+
+
+def test_timing_shows_where_the_seconds_went():
+    wf = workflow(approve=None, phase="Succeeded")
+    wf["metadata"]["creationTimestamp"] = "2026-10-26T10:00:03Z"  # alert time in the fixture is 10:00:00
+    nodes = wf["status"]["nodes"]
+    nodes["g"].update(startedAt="2026-10-26T10:00:05Z", finishedAt="2026-10-26T10:00:09Z")
+    nodes["c"].update(startedAt="2026-10-26T10:00:12Z", finishedAt="2026-10-26T10:00:15Z")
+    rows = {label: seconds for label, seconds, _ in cases.from_workflow(wf).timing}
+    assert rows.pop("Falco to case") == pytest.approx(2.88, abs=0.05)  # the alert time has a sub-second part
+    assert rows == {"Case to first step": 2.0, "Guard step": 4.0, "Between steps": 3.0, "Contain step": 3.0}
+
+
+def test_the_case_page_is_titled_after_the_groups_specific_rule(client):
+    http, fake = client
+    fake.workflows.clear()
+    winner = _with_tags(
+        member("drifted", "K8sSoar Drifted Binary Executed", 0, contained=True), ["k8s-soar", "soar_contain"]
+    )
+    miner = _with_tags(
+        member("miner", "K8sSoar Crypto Miner Execution", 0), ["k8s-soar", "soar_specific", "soar_contain"]
+    )
+    miner["status"]["phase"] = "Succeeded"
+    miner["status"]["nodes"] = {
+        "g": _node("guard", decision=json.dumps({"action": "skip", "reason": "dup"}), action="skip")
+    }
+    for wf in (winner, miner):
+        fake.workflows[wf["metadata"]["name"]] = wf
+    page = http.get("/cases/drifted").text
+    assert "<h1" in page and "Crypto Miner Execution</h1>" in page
+    assert "Merged into this case" in page  # the skipped case reads as part of this one
+    assert "Crypto Miner Execution" in http.get("/").text

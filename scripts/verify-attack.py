@@ -151,8 +151,25 @@ def evaluate(
                 )
             )
         if not handled:
-            out.append(("FAIL", f"{rule}: every case was skipped: {case['reason'] or 'no reason recorded'}"))
-            continue
+            # Several containment rules often fire on one event: the first case quarantines the
+            # pod, the others are skipped as duplicates. That still counts as handled.
+            sibling = next(
+                (
+                    c
+                    for c in recent
+                    if c["action"] == "contain"
+                    and (c["namespace"], c["pod"]) == (case["namespace"], case["pod"])
+                    and c["contain"].get("latency_seconds") is not None
+                ),
+                None,
+            )
+            if sibling is None or "soar_contain" not in tags.get(rule, []):
+                out.append(("FAIL", f"{rule}: every case was skipped: {case['reason'] or 'no reason recorded'}"))
+                continue
+            out.append(
+                ("INFO", f"its case was merged into {sibling['name']} ({sibling['rule']}), which quarantined the pod")
+            )
+            case = sibling
         wants_containment = "soar_contain" in tags.get(rule, [])
         latency = case["contain"].get("latency_seconds")
         if wants_containment:

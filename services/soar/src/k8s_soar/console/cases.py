@@ -221,6 +221,18 @@ class Case:
     alert: Alert | None
     steps: dict[str, Step] = field(default_factory=dict)
     annotations: dict[str, str] = field(default_factory=dict)
+    # The most specific case of this case's group (set by attach_related): it names the incident.
+    lead: Case | None = None
+
+    @property
+    def specific(self) -> bool:
+        """The rule names a concrete attack (crypto miner, reverse shell...) rather than generic activity."""
+        return bool(self.alert and "soar_specific" in self.alert.tags)
+
+    @property
+    def shown(self) -> Case:
+        """The case whose rule names the incident: the group's lead if there is one, else this case."""
+        return self.lead or self
 
     # --- step outputs ---------------------------------------------------
     @property
@@ -239,6 +251,48 @@ class Case:
     def contained(self) -> bool:
         c = self.containment
         return bool(c) and "latency_seconds" in c and not c.get("dry_run")
+
+    @property
+    def timing(self) -> list[tuple[str, float, str]]:
+        """Where the time between detection and containment went: (label, seconds, what it covers)."""
+        alert, guard, contain = self.alert, self.steps.get("guard"), self.steps.get("contain")
+
+        def gap(label: str, start: datetime | None, end: datetime | None, covers: str) -> None:
+            if start and end:
+                rows.append((label, max((end - start).total_seconds(), 0.0), covers))
+
+        rows: list[tuple[str, float, str]] = []
+        gap(
+            "Falco to case",
+            alert.time if alert else None,
+            self.created,
+            "Falco, falcosidekick, webhook, event bus, sensor, creating the workflow",
+        )
+        gap(
+            "Case to first step",
+            self.created,
+            guard.started if guard else None,
+            "the workflow controller starting the guard step",
+        )
+        gap(
+            "Guard step",
+            guard.started if guard else None,
+            guard.finished if guard else None,
+            "its pod starting, then routing the alert and claiming the pod",
+        )
+        gap(
+            "Between steps",
+            guard.finished if guard else None,
+            contain.started if contain else None,
+            "the controller starting the contain step",
+        )
+        gap(
+            "Contain step",
+            contain.started if contain else None,
+            contain.finished if contain else None,
+            "its pod starting, then labelling the pod",
+        )
+        return rows
 
     @property
     def time_to_contain(self) -> float | None:
@@ -367,16 +421,28 @@ class Case:
 
     @property
     def title(self) -> str:
-        if not self.alert:
+        shown = self.shown
+        if not shown.alert:
             return self.name
-        return re.sub(r"^K8sSoar\s+", "", self.alert.rule)
+        return re.sub(r"^K8sSoar\s+", "", shown.alert.rule)
+
+    @property
+    def mitre(self) -> list[dict[str, str]]:
+        """Techniques of this case and of the group's lead, lead first."""
+        out: list[dict[str, str]] = []
+        for case in (self.shown, self):
+            for technique in case.alert.mitre if case.alert else []:
+                if technique not in out:
+                    out.append(technique)
+        return out
 
     @property
     def headline(self) -> str:
         """Falco's one-sentence description, without timestamp, priority and field dump."""
-        if not self.alert or not self.alert.output:
+        shown = self.shown
+        if not shown.alert or not shown.alert.output:
             return ""
-        text = _FALCO_PREFIX.sub("", self.alert.output.strip())
+        text = _FALCO_PREFIX.sub("", shown.alert.output.strip())
         # Our rules read "Sentence (field=value ...)"; Falco's own rules read "Sentence | field=value ...".
         text = text.split(" | ", 1)[0].split(" (", 1)[0]
         bare_field = _BARE_FIELD.search(text)
@@ -792,7 +858,14 @@ def attach_related(all_cases: list[Case]) -> tuple[dict[str, list[Case]], set[st
     """
     related: dict[str, list[Case]] = {}
     attached: set[str] = set()
+    for case in all_cases:
+        case.lead = None
     for primary, *members in group_cases(all_cases):
+        # Name the incident after the most specific rule in the group, even when a generic rule
+        # won the race to quarantine the pod (that one still does the work).
+        lead = next((c for c in [primary, *members] if c.specific), None)
+        if lead is not None and lead is not primary:
+            primary.lead = lead
         for case in members:
             if case.awaiting and primary.status in (CLOSED, FAILED, SKIPPED):
                 continue

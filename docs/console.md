@@ -41,6 +41,23 @@ in place, every 2.5 s while the response runs and 8 s while a decision is pendin
 your scroll position or what you are typing. The theme switch in the menu bar (light / dark,
 following the OS until you choose) is remembered per browser.
 
+## One case per pod
+
+A pod under attack usually trips several rules at once (ours and Falco's own). Cases on the same
+pod and container within 15 minutes are one group, shown as one row with "+N more alerts":
+
+- The case that quarantined the pod does the work (approval, action). The group is **titled after
+  its most specific rule** (rules tagged `soar_specific`), so a miner reads as "Crypto Miner
+  Execution" even when a generic rule quarantined the pod first.
+- The others are listed under **Also detected on this pod**. A duplicate containment case that was
+  skipped shows as "Merged into this case".
+- One decision per pod: deciding on any case in the group closes the waiting ones, and a case that
+  reaches its approval gate after the decision is closed automatically.
+- A pod re-created under the same name (a re-run, a restart) has a new container id and is a new case.
+
+The **Technical** tab has **Where the time went**: detection to containment split into the event
+pipeline, the workflow starting, and each step (every workflow step runs as its own pod).
+
 ## Decisions
 
 | Option | Effect |

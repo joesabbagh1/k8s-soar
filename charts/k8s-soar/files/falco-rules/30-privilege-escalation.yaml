@@ -13,7 +13,7 @@
     privileged=%container.privileged
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_privilege_escalation, T1611]
 
 - rule: K8sSoar Privileged Container Started
   desc: >
@@ -27,7 +27,7 @@
     ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_privilege_escalation, T1611]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_privilege_escalation, T1611]
 
 - rule: K8sSoar Host IPC Access
   desc: >

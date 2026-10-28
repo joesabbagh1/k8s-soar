@@ -12,7 +12,7 @@
     user=%user.name ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_execution, mitre_command_and_control, T1059.004]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_execution, mitre_command_and_control, T1059.004]
 
 - rule: K8sSoar Shell Outbound Connection
   desc: >

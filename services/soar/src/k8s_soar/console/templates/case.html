@@ -89,7 +89,7 @@
     {% if a and a.image %}<span>Image <b class="mono">{{ a.image }}</b></span>{% endif %}
     {% if a %}<span>Detected <b>{{ a.time.strftime("%H:%M:%S") }}</b> · {{ ago(a.time) }}</span>{% endif %}
     {% if case.time_to_contain is not none %}<span>Contained in <b>{{ case.time_to_contain }}s</b></span>{% endif %}
-    {% for t in (a.mitre if a else []) %}<a href="{{ t.url }}" target="_blank" rel="noopener" title="{{ t.name }} · {{ t.tactic }}">{{ t.id }} {{ t.name }}</a>{% endfor %}
+    {% for t in case.mitre %}<a href="{{ t.url }}" target="_blank" rel="noopener" title="{{ t.name }} · {{ t.tactic }}">{{ t.id }} {{ t.name }}</a>{% endfor %}
   </div>
 </header>
 
@@ -211,7 +211,7 @@
             <td><a href="/cases/{{ r.name }}" style="color:var(--strong);font-weight:600">{{ r.title }}</a>
               <div class="muted" style="font-size:13px">{{ r.headline }}</div>
               {% if r.alert and r.alert.fields.get("proc.cmdline") %}<div style="margin-top:4px"><code>{{ r.alert.fields["proc.cmdline"] }}</code></div>{% endif %}</td>
-            <td style="white-space:nowrap"><span class="status {{ r.status }}">{{ r.status_label }}</span></td>
+            <td style="white-space:nowrap"><span class="status {{ r.status }}">{{ "Merged into this case" if r.status == "skipped" else r.status_label }}</span></td>
             <td class="faint mono" style="text-align:right;white-space:nowrap;font-size:12px">{% if a and r.alert %}{{ offset(r.alert.time, a.time) }}{% endif %}</td>
           </tr>
         {% endfor %}</tbody>
@@ -322,6 +322,22 @@
   <details class="card fold" data-fold="raw">
     <summary><span>Raw alert</span><span class="faint">JSON</span></summary>
     <section>{{ codeblock("raw", "alert.json", raw_alert) }}</section>
+  </details>
+  {% endif %}
+  {% set timing = case.timing %}
+  {% if timing %}
+  <details class="card fold" open data-fold="timing">
+    <summary><span>Where the time went</span><span class="faint">detection to containment, {{ "%.0f"|format(timing | sum(attribute=1)) }}s in total</span></summary>
+    <section>
+      <table>
+        <tbody>{% for label, seconds, covers in timing %}
+          <tr><td style="padding-left:0;white-space:nowrap;color:var(--strong)">{{ label }}</td>
+              <td class="muted">{{ covers }}</td>
+              <td class="mono" style="text-align:right;white-space:nowrap">{{ "%.0f"|format(seconds) }}s</td></tr>
+        {% endfor %}</tbody>
+      </table>
+      <div class="faint" style="font-size:12px;margin-top:8px">Timestamps have one-second resolution. Every workflow step runs as its own pod, so pod start-up counts in each step.</div>
+    </section>
   </details>
   {% endif %}
   <details class="card fold" open data-fold="caseinfo">

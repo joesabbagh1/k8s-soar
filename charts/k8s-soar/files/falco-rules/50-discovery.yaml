@@ -43,7 +43,7 @@
     ns=%k8s.ns.name pod=%k8s.pod.name container=%container.name container_id=%container.id
     image=%container.image.repository:%container.image.tag)
   priority: CRITICAL
-  tags: [k8s-soar, soar_contain, mitre_lateral_movement, T1021]
+  tags: [k8s-soar, soar_specific, soar_contain, mitre_lateral_movement, T1021]
 
 - rule: K8sSoar File and Directory Discovery
   desc: >

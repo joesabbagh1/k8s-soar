@@ -46,6 +46,10 @@ Stock Falco rules (falco-rules v4) also run (`rule_matching: all`). Any stock ru
 - **Trust a namespace**: add to `trustedNamespaces` in your profile (`k8sSoar.trustedNamespaces`);
   it feeds the Falco list, Kyverno exclusions and the responder guard.
 - **Change routing**: edit the rule's `soar_contain`/`soar_notify` tag.
+- **Name the incident**: rules that identify a concrete attack (crypto miner, reverse shell, token theft,
+  container escape, metadata access, lateral movement, sensitive file access) also carry `soar_specific`.
+  When several rules fire on one pod, the console titles the case after the specific one, even if a
+  generic rule (for example *Drifted Binary Executed*) won the race to quarantine the pod.
 - **Per-rule exceptions**: use Falco `exceptions:` or `override: condition: append` in your own
   rules file next to these.
 

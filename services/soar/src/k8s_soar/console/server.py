@@ -188,7 +188,11 @@ def case_page(request: Request, name: str, decided: str = "") -> HTMLResponse:
     dashboard = grafana.dashboard_url(base, "k8s-soar-response", at) if at else ""
     raw_alert = json.dumps(case.alert.model_dump(mode="json"), indent=2) if case.alert else ""
     try:
-        related = cases.attach_related(_load_cases_cached())[0].get(case.name, [])
+        listed = _load_cases_cached()
+        grouped = cases.attach_related(listed)[0]
+        related = grouped.get(case.name, [])
+        # The page renders its own freshly loaded copy of the case: give it the group's lead too.
+        case.lead = next((c.lead for c in listed if c.name == case.name), None)
     except ArgoError:
         related = []
     return _page(

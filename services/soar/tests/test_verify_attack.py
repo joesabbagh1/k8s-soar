@@ -112,6 +112,21 @@ def test_only_skipped_cases_fail(v):
     assert "FAIL" in levels(out) and any("every case was skipped" in m for _, m in out)
 
 
+def test_a_skipped_containment_rule_merged_into_a_sibling_that_quarantined_is_a_pass(v):
+    # Two containment rules fired on one event; the other rule's case won the race and quarantined the pod.
+    skipped = case(v, action="skip", contained=False, minutes_ago=2)
+    winner = case(v, rule="K8sSoar Drifted Binary Executed", contained=True, minutes_ago=2)
+    out = v.evaluate("05-crypto-miner", [MINER], TAGS, [skipped, winner], NOW, 15)
+    assert "FAIL" not in levels(out)
+    assert any("merged into" in m and "quarantined the pod" in m for _, m in out)
+    assert any("quarantined 0.8s" in m for _, m in out)
+
+
+def test_a_skipped_containment_rule_without_a_quarantining_sibling_still_fails(v):
+    out = v.evaluate("x", [MINER], TAGS, [case(v, action="skip", contained=False)], NOW, 15)
+    assert "FAIL" in levels(out)
+
+
 def test_containment_rule_routed_to_notify_fails(v):
     out = v.evaluate("x", [MINER], TAGS, [case(v, action="notify", contained=False)], NOW, 15)
     assert any(lvl == "FAIL" and "should be contained" in m for lvl, m in out)
