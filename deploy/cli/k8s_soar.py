@@ -183,6 +183,8 @@ class _Keys:
             return "space"
         if ch == b"\x03":
             raise KeyboardInterrupt
+        if ch in (b"\x7f", b"\x08"):
+            return "backspace"
         return ch.decode(errors="ignore").lower()
 
 
@@ -211,35 +213,71 @@ def _split(label: str) -> tuple[str, str]:
     return name.strip(), desc.strip()
 
 
+SEARCHABLE = 10  # longer lists get type-to-filter and scrolling
+VISIBLE = 10
+
+
+def _matches(query: str, value: str, label: str) -> bool:
+    haystack = f"{value} {label}".lower()
+    return all(term in haystack for term in query.lower().split())
+
+
 def choose(question: str, options: list[tuple[str, str]], default: str | None = None) -> str:
     if not INTERACTIVE:
         return _choose_numbered(question, options, default)
+    searchable = len(options) > SEARCHABLE
+    query = ""
+    shown = options
     index = next((i for i, (v, _) in enumerate(options) if v == default), 0)
     screen = _Screen()
     with _Keys() as keys:
         while True:
-            lines = [f"{cyan('?')} {bold(question)} {dim('› ↑↓ to move, enter to select')}"]
-            for i, (_, label) in enumerate(options):
+            hint = "type to filter, ↑↓ to move, enter to select" if searchable else "↑↓ to move, enter to select"
+            title = f"{cyan('?')} {bold(question)} {dim('› ' + hint)}"
+            lines = [title + (f" {cyan(query)}" if query else "")]
+            top = max(0, min(index - VISIBLE // 2, len(shown) - VISIBLE)) if searchable else 0
+            window = shown[top : top + VISIBLE] if searchable else shown
+            if searchable and top:
+                lines.append(dim(f"  ↑ {top} more"))
+            for i, (_, label) in enumerate(window, start=top):
                 name, desc = _split(label)
                 if i == index:
                     text = _fit(name + (f" — {desc}" if desc else ""), 4)
                     head, _, tail = text.partition(" — ")
                     lines.append(f"{cyan('❯')} {cyan(head)}" + (dim(" — " + tail) if tail else ""))
                 else:
-                    lines.append(f"  {_fit(name, 4)}")
+                    lines.append(
+                        f"  {_fit(name, 4)}" + (dim(" — " + _fit(desc, len(name) + 7)) if desc and searchable else "")
+                    )
+            if not shown:
+                lines.append(dim("  no match — backspace to edit the filter"))
+            elif searchable and top + VISIBLE < len(shown):
+                lines.append(dim(f"  ↓ {len(shown) - top - VISIBLE} more"))
             screen.draw(lines)
             key = keys.read()
-            if key in ("up", "k"):
-                index = (index - 1) % len(options)
-            elif key in ("down", "j"):
-                index = (index + 1) % len(options)
-            elif key.isdigit() and 1 <= int(key) <= len(options):
-                index = int(key) - 1
-            elif key == "enter":
+            if key == "up" and shown:
+                index = (index - 1) % len(shown)
+            elif key == "down" and shown:
+                index = (index + 1) % len(shown)
+            elif key == "enter" and shown:
                 break
+            elif searchable and key == "backspace":
+                query = query[:-1]
+            elif searchable and len(key) == 1 and key.isprintable():
+                query += key
+            elif not searchable and key in ("k", "j"):
+                index = (index + (1 if key == "j" else -1)) % len(shown)
+            elif not searchable and key.isdigit() and 1 <= int(key) <= len(options):
+                index = int(key) - 1
+            else:
+                continue
+            if searchable and key not in ("up", "down"):
+                shown = [o for o in options if _matches(query, *o)]
+                index = 0
     screen.clear()
-    _done(question, _split(options[index][1])[0])
-    return options[index][0]
+    choice = shown[index]
+    _done(question, _split(choice[1])[0])
+    return choice[0]
 
 
 def choose_many(question: str, options: list[tuple[str, str]], defaults: list[str]) -> list[str]:
@@ -383,6 +421,170 @@ def _choose_many_numbered(question: str, options: list[tuple[str, str]], default
         if all(p.isdigit() and 1 <= int(p) <= len(options) for p in parts):
             return [options[int(p) - 1][0] for p in parts]
         print(f"    enter numbers from 1 to {len(options)}")
+
+
+# --- model lists ------------------------------------------------------------------------
+# The wizard asks the provider which models this key can use (current, tool-capable),
+# and falls back to FALLBACK_MODELS when the provider can't be reached.
+
+# Only IDs known to exist; update when providers retire models.
+FALLBACK_MODELS: dict[str, list[str]] = {
+    "anthropic": ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-4-5-20251001"],
+    "gemini": ["gemini-3.8-flash"],
+    "deepseek": ["deepseek-chat", "deepseek-reasoner"],
+    "mistral": ["mistral-large-latest", "mistral-small-latest"],
+    "ollama": ["qwen2.5", "llama3.1"],
+}
+# Typed instead of listed: deployment names / model IDs specific to your cloud account.
+TYPED_MODEL_PROVIDERS = {"azure", "bedrock"}
+NOT_CHAT = (
+    "embed",
+    "tts",
+    "whisper",
+    "dall-e",
+    "image",
+    "audio",
+    "realtime",
+    "transcribe",
+    "moderation",
+    "search",
+    "davinci",
+    "babbage",
+    "aqa",
+    "imagen",
+    "veo",
+    "live",
+    "native-audio",
+    "computer-use",
+)
+
+
+class KeyRejected(Exception):
+    pass
+
+
+def _get_json(url: str, headers: dict[str, str] | None = None) -> dict:
+    req = urllib.request.Request(
+        url, headers={"Accept": "application/json", "User-Agent": "k8s-soar", **(headers or {})}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 - provider API URLs
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise KeyRejected(f"{exc.code} {exc.reason}") from exc
+        if exc.code == 400 and "API key" in exc.read().decode(errors="replace"):
+            raise KeyRejected("API key not valid") from exc
+        raise
+
+
+def _chat_like(model_id: str) -> bool:
+    lowered = model_id.lower()
+    return not any(word in lowered for word in NOT_CHAT)
+
+
+def list_models(provider: str, key: str, base_url: str = "") -> list[tuple[str, str]]:
+    """(model id, label) pairs this key can use for tool-calling chat, newest/most useful first."""
+    bearer = {"Authorization": f"Bearer {key}"}
+    if provider == "anthropic":
+        data = _get_json(
+            "https://api.anthropic.com/v1/models?limit=100", {"x-api-key": key, "anthropic-version": "2023-06-01"}
+        )
+        return [(m["id"], f"{m['id']} — {m.get('display_name', '')}") for m in data.get("data", [])]  # newest first
+    if provider == "openai":
+        data = _get_json("https://api.openai.com/v1/models", bearer)
+        ids = [
+            m["id"]
+            for m in data.get("data", [])
+            if m["id"].startswith(("gpt-", "o1", "o3", "o4", "o5", "chatgpt-")) and _chat_like(m["id"])
+        ]
+        return [(i, i) for i in sorted(ids, reverse=True)]
+    if provider == "gemini":
+        data = _get_json(f"https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key={key}")
+        out = []
+        for m in data.get("models", []):
+            model_id = m.get("name", "").removeprefix("models/")
+            if (
+                "generateContent" in m.get("supportedGenerationMethods", [])
+                and "gemini" in model_id
+                and _chat_like(model_id)
+            ):
+                out.append((model_id, f"{model_id} — {m.get('displayName', '')}"))
+        return sorted(out, reverse=True)
+    if provider == "openrouter":
+        _get_json("https://openrouter.ai/api/v1/key", bearer)  # validates the key
+        data = _get_json("https://openrouter.ai/api/v1/models")
+        out = []
+        for m in data.get("data", []):
+            if "tools" not in (m.get("supported_parameters") or []):
+                continue
+            pricing = m.get("pricing") or {}
+            free = m["id"].endswith(":free") or (pricing.get("prompt") == "0" and pricing.get("completion") == "0")
+            out.append((m["id"], f"{m['id']} — {'FREE · ' if free else ''}{m.get('name', '')}"))
+        return sorted(out, key=lambda o: ("FREE" not in o[1], o[0]))  # free models first
+    if provider == "deepseek":
+        data = _get_json("https://api.deepseek.com/models", bearer)
+        return [(m["id"], m["id"]) for m in data.get("data", [])]
+    if provider == "mistral":
+        data = _get_json("https://api.mistral.ai/v1/models", bearer)
+        ids = {m["id"] for m in data.get("data", []) if (m.get("capabilities") or {}).get("function_calling")}
+        return [(i, i) for i in sorted(ids)]
+    if provider == "ollama" and base_url:
+        data = _get_json(f"{base_url.rstrip('/')}/api/tags")
+        return [(m["name"], m["name"]) for m in data.get("models", [])]
+    raise ValueError(f"no model list for {provider}")
+
+
+def pick_models(ai: dict, secrets: dict[str, str], previous: str | None) -> None:
+    """Choose the model (and optional fallback) from the provider's live list."""
+    provider = ai["provider"]
+    current = ai.get("model", "") if previous == provider else ""
+    if provider in TYPED_MODEL_PROVIDERS:
+        what = "Deployment name" if provider == "azure" else "Model ID (as enabled in your AWS account)"
+        ai["model"] = ask(what, current, required=True, validate=lambda m: model_check(provider, m))
+        ai["fallbackModel"] = ask("Fallback (Enter to skip)", ai.get("fallbackModel", "") if current else "")
+        return
+    while True:
+        try:
+            with _Spinner("Loading the models this key can use"):
+                models = list_models(provider, secrets.get("AI_API_KEY", ""), ai.get("baseUrl", ""))
+            if not models:
+                raise ValueError("the provider returned no usable models")
+            print(f"{green('✔')} {len(models)} models available")
+            break
+        except KeyRejected as exc:
+            print(red(f"✖ The provider rejected the API key ({exc})."))
+            secrets["AI_API_KEY"] = ask_secret("API key", "", required=True)
+        except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
+            models = [(m, m) for m in FALLBACK_MODELS.get(provider, [])]
+            if models:
+                print(yellow(f"! Couldn't list models ({exc}); showing the built-in list."))
+                break
+            if confirm(f"Couldn't list {provider} models ({exc}). Try again?", True):
+                continue
+            sys.exit("Nothing changed. Check the network or key, then run ./k8s-soar configure again.")
+    ids = [m for m, _ in models]
+    ai["model"] = choose("Model", models, current if current in ids else ids[0])
+    fallback = ai.get("fallbackModel", "") if previous == provider else ""
+    others = [("", "None — no fallback")] + [m for m in models if m[0] != ai["model"]]
+    ai["fallbackModel"] = choose("Fallback when the model is overloaded", others, fallback if fallback in ids else "")
+
+
+class _Spinner:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def __enter__(self):
+        if INTERACTIVE:
+            sys.stdout.write(f"{cyan('⠋')} {self.text}{dim('…')}")
+            sys.stdout.flush()
+        return self
+
+    def __exit__(self, *exc):
+        if INTERACTIVE:
+            sys.stdout.write("\r\033[K")
+            sys.stdout.flush()
+        return False
 
 
 # Model families that clearly belong to one provider (catches e.g. a Claude model on Gemini).
@@ -684,17 +886,6 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
     if ai["enabled"]:
         previous = ai.get("provider")
         ai["provider"] = choose("Provider", [(p, label) for p, label, _ in PROVIDERS], previous or "anthropic")
-        # Only offer the saved model if it belongs to the provider just chosen.
-        default_model = ai.get("model", "") if previous == ai["provider"] else ""
-        default_model = default_model or next(m for p, _, m in PROVIDERS if p == ai["provider"])
-        if not default_model:
-            print(dim("Use the model ID exactly as your provider lists it (no spaces, no 'models/' prefix)."))
-        ai["model"] = ask("Model", default_model, required=True, validate=lambda m: model_check(ai["provider"], m))
-        print(dim("Optional: a second model from the same provider, used when the first is overloaded."))
-        fallback = ai.get("fallbackModel", "") if previous == ai["provider"] else ""
-        ai["fallbackModel"] = ask(
-            "Fallback model (Enter to skip)", fallback, validate=lambda m: model_check(ai["provider"], m)
-        )
         if ai["provider"] in ("ollama", "azure"):
             hint = (
                 "http://ollama.<namespace>:11434"
@@ -703,7 +894,9 @@ def wizard(full: bool) -> tuple[dict, dict[str, str], str]:
             )
             ai["baseUrl"] = ask(f"Endpoint ({hint})", ai.get("baseUrl", ""), True, url_check)
         if ai["provider"] not in NO_KEY_PROVIDERS:
-            secrets["AI_API_KEY"] = ask_secret("API key", secrets.get("AI_API_KEY", ""), required=True)
+            key = secrets.get("AI_API_KEY", "") if previous == ai["provider"] else ""
+            secrets["AI_API_KEY"] = ask_secret("API key", key, required=True)
+        pick_models(ai, secrets, previous)
     ai_usable = ai["enabled"] and (ai.get("provider") in NO_KEY_PROVIDERS or bool(secrets.get("AI_API_KEY")))
 
     decisions = response.setdefault("decisions", {})

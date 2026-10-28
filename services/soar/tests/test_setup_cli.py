@@ -63,3 +63,35 @@ def test_empty_secrets_are_not_written(cli):
 )
 def test_model_check(cli, provider, model, ok):
     assert (cli.model_check(provider, model) == "") is ok
+
+
+def test_model_lists_are_filtered_and_ordered(cli, monkeypatch):
+    responses = {
+        "https://openrouter.ai/api/v1/key": {"data": {}},
+        "https://openrouter.ai/api/v1/models": {
+            "data": [
+                {"id": "a/paid", "name": "Paid", "supported_parameters": ["tools"], "pricing": {"prompt": "0.1"}},
+                {"id": "b/free:free", "name": "Free", "supported_parameters": ["tools"], "pricing": {}},
+                {"id": "c/no-tools:free", "name": "NoTools", "supported_parameters": [], "pricing": {}},
+            ]
+        },
+    }
+    monkeypatch.setattr(cli, "_get_json", lambda url, headers=None: responses[url])
+    models = cli.list_models("openrouter", "k")
+    assert [m for m, _ in models] == ["b/free:free", "a/paid"]  # free first, no tool-less models
+    assert "FREE" in models[0][1]
+
+    gemini = {
+        "models": [
+            {"name": "models/gemini-3.8-flash", "supportedGenerationMethods": ["generateContent"]},
+            {"name": "models/gemini-embedding-001", "supportedGenerationMethods": ["embedContent"]},
+            {"name": "models/gemini-3.8-flash-tts", "supportedGenerationMethods": ["generateContent"]},
+        ]
+    }
+    monkeypatch.setattr(cli, "_get_json", lambda url, headers=None: gemini)
+    assert [m for m, _ in cli.list_models("gemini", "k")] == ["gemini-3.8-flash"]
+
+
+def test_filter_terms(cli):
+    assert cli._matches("deep free", "deepseek/x:free", "DeepSeek (free)")
+    assert not cli._matches("deep paid", "deepseek/x:free", "DeepSeek (free)")

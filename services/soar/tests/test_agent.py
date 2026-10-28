@@ -131,7 +131,7 @@ def test_model_string_normalisation():
     )
     free = AgentSettings(provider="openrouter", model="deepseek/deepseek-chat:free").litellm_model
     assert free == "openrouter/deepseek/deepseek-chat:free"
-    assert AgentSettings(provider="openrouter", model="openrouter/x/y").litellm_model == "openrouter/x/y"
+    assert AgentSettings(provider="openrouter", model="openrouter/free").litellm_model == "openrouter/openrouter/free"
     assert AgentSettings(provider="deepseek", model="deepseek-chat").litellm_model == "deepseek/deepseek-chat"
 
 

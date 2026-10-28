@@ -7,6 +7,13 @@ structured verdict that is shown in Slack, Jira and at the approval gate.
 
 ## Choosing a provider and model
 
+`./k8s-soar configure` (AI step) asks for the provider and the key. It then fetches the models that
+key can use from the provider and lists only chat models that support tool calling, which triage
+needs. You pick one with the arrow keys, or type to filter long lists such as OpenRouter's. A
+rejected key is caught at that point. If the provider can't be reached, a small built-in list is
+shown. Azure (deployment names) and Bedrock (account-specific IDs) are typed, because no list
+could know them. The values below are what the wizard writes.
+
 Provider calls go through [LiteLLM](https://docs.litellm.ai/docs/providers), so any provider it
 supports works. Configure in `deploy/profiles/default.yaml`:
 
@@ -29,7 +36,7 @@ k8sSoar:
 | AWS Bedrock | `bedrock` | `anthropic.claude-...` | — | IAM via IRSA/instance role + `AWS_REGION_NAME` in `extraEnv` |
 | Ollama (local) | `ollama` | `llama3.1`, `qwen2.5` | none | `baseUrl: http://ollama.<ns>:11434`; model must support tool calling |
 | DeepSeek (paid API) | `deepseek` | the ID from DeepSeek's docs | DeepSeek API key | |
-| OpenRouter, including **free** models | `openrouter` | `deepseek/<model>:free` (any ID from openrouter.ai/models, free ones end in `:free`) | OpenRouter key (free account) | Free models are rate-limited, and the model must support tool calling |
+| OpenRouter, including **free** models | `openrouter` | picked from the live list (free ones are listed first and marked FREE) | OpenRouter key (free account) | Free models are rate-limited; which ones are free changes often |
 | Mistral / Vertex | `mistral` / `vertex_ai` | | | |
 
 Then:

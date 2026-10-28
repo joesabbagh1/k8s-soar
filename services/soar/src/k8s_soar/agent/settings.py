@@ -64,10 +64,11 @@ class AgentSettings(BaseModel):
         # Google lists models as "models/gemini-..."; LiteLLM wants the bare ID.
         if model.startswith("models/"):
             model = model.removeprefix("models/")
+        if self.provider in GATEWAYS:
+            # Gateway IDs are used exactly as the gateway lists them, even "openrouter/free".
+            return f"{self.provider}/{model}"
         if model.startswith(f"{self.provider}/"):
             return model
-        if self.provider in GATEWAYS:
-            return f"{self.provider}/{model}"
         if "/" in model and model.split("/", 1)[0] in PROVIDERS:
             return model
         return f"{self.provider}/{model}"
