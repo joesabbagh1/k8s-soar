@@ -97,7 +97,7 @@ smoke-test: ## End-to-end test: trigger a rule and check containment (ARGS=--kee
 # Attack scenarios live in scenarios/<id>-<name>/run.sh.
 # `make <name>` runs one (same shape as smoke-test). The numbered directory
 # name is an alias: `make shell-in-container` and `make 01-shell-in-container`.
-# `make deploy` creates the security-lab namespace.
+# Scenarios run in the default namespace.
 SCENARIO_DIRS := $(patsubst scenarios/%/run.sh,%,$(wildcard scenarios/*/run.sh))
 scenario_slug = $(patsubst $(firstword $(subst -, ,$(1)))-%,%,$(1))
 

@@ -66,7 +66,7 @@ The console is the analyst view ([docs](docs/console.md)). Argo's UI (`make argo
 ```bash
 make preflight                         # tools + cluster checks
 cp deploy/secrets.env.example deploy/secrets.env   # optional: Slack, Jira, AI key
-make deploy                            # helmfile apply, including the security-lab namespace
+make deploy                            # helmfile apply
 make status                            # health check
 make smoke-test                        # trigger a rule, verify containment end to end
 make console                           # review and decide cases
@@ -119,7 +119,7 @@ docs/                   architecture, detection catalog, response, AI agent, ope
 | [Operations](docs/operations.md) | install paths, upgrades, tuning, troubleshooting |
 | [Thesis](docs/thesis/) | methodology, reproducibility, limitations |
 
-Attack scenarios live in `scenarios/`. `make deploy` creates the `security-lab` namespace, then `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
+Attack scenarios live in `scenarios/`. They run in the `default` namespace. `make <attack>` runs one (for example `make shell-in-container`). `make help` lists them.
 
 ## License
 

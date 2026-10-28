@@ -8,14 +8,14 @@
 
 ## Lab design
 
-- Namespace: `security-lab`
+- Namespace: `default`
 - Victim workload: nginx Deployment with minimal privileges
 - Network: default-deny + explicit DNS egress
 - Scenarios never run cluster-wide
 
 ## Simulation procedure
 
-1. Install the stack: `cd deploy/ansible && ./setup.sh`, or `make deploy` (`security-lab` is included)
+1. Install the stack: `cd deploy/ansible && ./setup.sh`, or `make deploy`
 2. Run one attack: `make <attack>` (for example `make shell-in-container`; `make help` lists them)
 3. Capture logs within 2 minutes:
    - `kubectl logs -n falco ...`

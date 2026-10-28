@@ -1,8 +1,8 @@
-# Lab profile: same stack as default, with local UI links.
-# security-lab is already created by the default profile.
+# Lab profile: same stack as default, with local Grafana and Argo links.
+# Scenarios run in the default namespace either way.
 k8sSoar:
   lab:
-    enabled: true
+    enabled: false
   integrations:
     grafanaExternalUrl: http://127.0.0.1:3000
     argoExternalUrl: http://127.0.0.1:2746

@@ -10,7 +10,7 @@ SCENARIO_POD="scenario-05-miner"
 
 scenario_cleanup "$SCENARIO_ID"
 
-echo ">>> Spawn miner-like process in security-lab (scenario ${SCENARIO_ID})..."
+echo ">>> Spawn miner-like process in ${SCENARIO_NS} (scenario ${SCENARIO_ID})..."
 kubectl delete pod "$SCENARIO_POD" -n "$SCENARIO_NS" --ignore-not-found --wait=true --timeout=60s
 kubectl run "$SCENARIO_POD" -n "$SCENARIO_NS" --rm -i --restart=Never \
   --labels="${SCENARIO_LABEL_KEY}=${SCENARIO_ID},scenario-target=true" \

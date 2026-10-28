@@ -25,10 +25,11 @@ trustedNamespaces:
   - k8s-soar
   - local-path-storage
 
-# Attack-scenario namespace. Part of the default install so `make deploy`
-# does not delete it. It is not a trusted namespace: rules still apply there.
+# Left off. Attack scenarios run in the default namespace so the workload
+# looks like any other app. Turning this on creates a namespace named
+# security-lab, which the triage model treats as a lab and marks benign.
 lab:
-  enabled: true
+  enabled: false
   namespace: security-lab
 
 image:

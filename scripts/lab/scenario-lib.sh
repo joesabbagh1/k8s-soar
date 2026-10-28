@@ -2,7 +2,7 @@
 # Shared helpers — each scenario uses labeled pods and cleans up its own resources.
 set -euo pipefail
 
-SCENARIO_NS="${SCENARIO_NS:-security-lab}"
+SCENARIO_NS="${SCENARIO_NS:-default}"
 SCENARIO_LABEL_KEY="${SCENARIO_LABEL_KEY:-scenario}"
 
 # Remove pods for one scenario id (e.g. "01") and legacy fixed names.

@@ -34,4 +34,4 @@ else
   kubectl get pod scenario-06-insecure -n "$SCENARIO_NS" 2>&1 || true
 fi
 echo ">>> Kyverno PolicyReports (audit):"
-kubectl get policyreport -A 2>/dev/null | grep -i security-lab || echo "    (none yet — background scan may take a minute)"
+kubectl get policyreport -A 2>/dev/null | grep -i "$SCENARIO_NS" || echo "    (none yet — background scan may take a minute)"
