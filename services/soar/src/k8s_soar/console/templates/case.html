@@ -39,6 +39,10 @@
   border-bottom: 2px solid transparent; cursor: pointer; }
 .tabs button:hover { color: var(--strong); }
 .tabs button.on { color: var(--strong); border-bottom-color: var(--strong); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 32px; align-items: start; }
+.verdict-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+.verdict-bar .meter { flex: 1 1 140px; max-width: 260px; margin: 0; align-self: center; }
+@media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
 .grid2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .stack { display: grid; gap: 18px; }
 @media (max-width: 960px) { .grid2 { grid-template-columns: 1fr; } }
@@ -161,12 +165,12 @@
 <div class="panels">
 {# ---- Overview ---- #}
 <div data-panel="overview" class="stack">
-  <div class="grid2">
+  <div class="stack">
     <details class="card fold" open data-fold="happened">
       <summary><span>What happened</span>{% if a %}<span class="faint">{{ a.fields.get("proc.name", "") }}</span>{% endif %}</summary>
-      <section>
-        {% if a and a.fields.get("proc.cmdline") %}{{ codeblock("cmd", "Command line", a.fields["proc.cmdline"]) }}{% endif %}
-        <dl class="kv" style="margin-top:16px">
+      <section class="split">
+        <div>{% if a and a.fields.get("proc.cmdline") %}{{ codeblock("cmd", "Command line", a.fields["proc.cmdline"]) }}{% endif %}</div>
+        <dl class="kv">
           {% for label, value in case.key_fields if label != "Command line" %}<dt>{{ label }}</dt><dd><code>{{ value }}</code></dd>{% endfor %}
           {% if a and a.hostname %}<dt>Node</dt><dd><code>{{ a.hostname }}</code></dd>{% endif %}
           {% if a %}<dt>Rule</dt><dd>{{ a.rule }}</dd>{% endif %}
@@ -180,14 +184,16 @@
       <section>
       {% if v and v.verdict == "unavailable" %}<div class="muted">{{ v.summary }}</div>
       {% elif v %}
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div class="verdict-bar">
           <span class="v-{{ verdict_tone(v.verdict) }}" style="font-size:17px;font-weight:650">{{ verdict_label(v.verdict) }}</span>
           <span class="muted">{{ (v.confidence * 100)|round|int }}% sure</span>
+          <div class="meter {{ v.verdict }}"><i style="width:{{ (v.confidence * 100)|round|int }}%"></i></div>
+          <span class="muted" style="font-size:13px">{{ verdict_explained(v.verdict) }}</span>
         </div>
-        <div class="muted" style="font-size:13px;margin-top:2px">{{ verdict_explained(v.verdict) }}</div>
-        <div class="meter {{ v.verdict }}"><i style="width:{{ (v.confidence * 100)|round|int }}%"></i></div>
-        <div style="color:var(--strong)">{{ v.summary }}</div>
-        {% if v.evidence %}<ul class="muted" style="margin:10px 0 0;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+        <div class="split" style="margin-top:14px">
+          <div style="color:var(--strong)">{{ v.summary }}</div>
+          {% if v.evidence %}<ul class="muted" style="margin:0;padding-left:18px">{% for item in v.evidence %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+        </div>
         {% if v.rationale %}<details style="margin-top:10px"><summary>Reasoning</summary><p class="muted" style="margin:6px 0 0">{{ v.rationale }}</p></details>{% endif %}
         <div class="faint" style="font-size:12px;margin-top:12px">{{ v.model or "AI" }} · advisory{% if v.reused %} · shared with another alert on this pod, no extra cost{% elif v.tokens %} · {{ v.calls }} model call{{ "s" if v.calls != 1 }}, {{ "{:,}".format(v.tokens) }} tokens{% endif %}</div>
       {% elif tri and tri.state == "running" %}
