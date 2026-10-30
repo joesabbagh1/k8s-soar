@@ -1,5 +1,7 @@
 # k8s-soar — one entry point for everything. `make help` lists targets.
 SHELL := /usr/bin/env bash
+# Setup installs helm and helmfile into ~/.local/bin; a shell opened before that has no such PATH entry.
+export PATH := $(HOME)/.local/bin:$(PATH)
 ENV ?= default
 HELMFILE := helmfile -f deploy/helmfile.yaml.gotmpl -e $(ENV)
 SOAR_NS := k8s-soar
