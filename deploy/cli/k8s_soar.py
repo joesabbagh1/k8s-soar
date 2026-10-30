@@ -1078,6 +1078,7 @@ def cmd_setup(_: argparse.Namespace) -> None:
     if not confirm("Save and install?", True):
         sys.exit("Nothing changed.")
     _save(root_profile, secrets)
+    require_images(root_profile)
     if target == "new":
         task(
             "Creating the cluster and installing k8s-soar",
@@ -1103,6 +1104,7 @@ def cmd_configure(_: argparse.Namespace) -> None:
     if not cluster_reachable():
         print(yellow("No reachable cluster: the settings are saved and ./k8s-soar setup will apply them."))
         return
+    require_images(root_profile)
     apply_existing(full=False)
     print()
     print(green(bold("Done.")) + " The new settings are live; nothing else to run.")
@@ -1142,7 +1144,12 @@ def _registry(profile: dict) -> str:
 
 
 def image_exists(registry: str, image: str, tag: str) -> bool:
-    """Anonymous manifest check on GHCR (the images are public)."""
+    return image_status(registry, image, tag) is True
+
+
+def image_status(registry: str, image: str, tag: str) -> bool | None:
+    """Anonymous manifest check on GHCR (the images are public): True, False, or None when the
+    registry can't be reached (so an offline machine is not told its images are missing)."""
     host, _, owner = registry.partition("/")
     repo = f"{owner}/{image}"
     try:
@@ -1161,8 +1168,39 @@ def image_exists(registry: str, image: str, tag: str) -> bool:
         )
         with urllib.request.urlopen(req, timeout=10):  # noqa: S310
             return True
-    except (urllib.error.URLError, OSError, ValueError):
+    except urllib.error.HTTPError:
         return False
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def _chart_app_version() -> str:
+    for line in (ROOT / "charts" / "k8s-soar" / "Chart.yaml").read_text().splitlines():
+        if line.startswith("appVersion:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return ""
+
+
+def require_images(root_profile: dict) -> None:
+    """Stop before deploying images that were never published.
+
+    The chart runs images tagged with the profile's image.tag, else the chart's appVersion. When that tag
+    doesn't exist the pods sit in ImagePullBackOff and helmfile only gives up after its 15 minute wait.
+    """
+    image = root_profile.get("k8sSoar", {}).get("image", {})
+    tag = image.get("tag") or _chart_app_version()
+    registry = _registry(root_profile)
+    missing = [img for img in IMAGES if image_status(registry, img, tag) is False]
+    if not missing:
+        return
+    sys.exit(
+        red(f"✖ The images for {tag} are not published ({', '.join(missing)}) in {registry}.")
+        + "\n  Installing now would leave the pods in ImagePullBackOff.\n"
+        + "  Run the latest commit's images instead:  ./k8s-soar update\n"
+        + "  (or publish this version: push the tag v"
+        + _chart_app_version()
+        + f"; builds: {REPO_ACTIONS})"
+    )
 
 
 def _git(*args: str) -> str:
@@ -1198,6 +1236,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     if args.release:
         running = "the release version"
         k8s.get("image", {}).pop("tag", None)
+        require_images(root_profile)
         write_profile(root_profile)
         print(f"{green('✔')} Tracking releases again (image tag = chart appVersion)")
     else:
