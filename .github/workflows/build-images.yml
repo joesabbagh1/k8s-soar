@@ -88,4 +88,9 @@ jobs:
           sources=()
           for f in /tmp/digests/*; do sources+=("$IMAGE@$(cat "$f")"); done
           docker buildx imagetools create "${args[@]}" "${sources[@]}"
-          docker buildx imagetools inspect "$IMAGE:${TAGS%% *}"
+          # GHCR can answer "not found" for a few seconds after the push; the push itself succeeded.
+          for attempt in 1 2 3 4 5; do
+            docker buildx imagetools inspect "$IMAGE:${TAGS%% *}" && exit 0
+            sleep $((attempt * 3))
+          done
+          exit 1
